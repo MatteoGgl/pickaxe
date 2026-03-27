@@ -16,9 +16,6 @@ import (
 var addAlias string
 var addRecursive bool
 
-// PickerFunc is the signature for launching the TUI file picker.
-type PickerFunc func(root string, preSelected map[string]bool) (tui.PickerResult, error)
-
 // AddFromPicker runs the interactive TUI add flow.
 func AddFromPicker(v *vault.Vault, vaultRoot string, picker PickerFunc, w io.Writer) error {
 	preSelected := vault.BuildPreSelected(v.Entries())
