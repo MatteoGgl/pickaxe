@@ -7,5 +7,5 @@ type Reader struct{ dir string }
 // NewReader returns a Reader backed by dir.
 func NewReader(dir string) *Reader { return &Reader{dir: dir} }
 
-func (r *Reader) ListFiles() ([]ResolvedFile, error)      { return ListFiles(r.dir) }
-func (r *Reader) ReadFile(name string) (string, error)    { return ReadFile(r.dir, name) }
+func (r *Reader) ListFiles() ([]ResolvedFile, error)   { return ListFiles(r.dir) }
+func (r *Reader) ReadFile(name string) (string, error) { return ReadFile(r.dir, name) }

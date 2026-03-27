@@ -22,6 +22,9 @@ go test ./internal/registry/... -v -run TestEnumerateFiles_Flat
 
 # Run
 ./dist/pickaxe --help
+
+# Audit (run before committing — tidies deps, formats, vets, and runs staticcheck)
+make audit
 ```
 
 ## Architecture
