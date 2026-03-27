@@ -29,6 +29,8 @@ type fileItem struct {
 	name    string
 	isDir   bool
 	checked bool
+	partial bool     // dirs only: some but not all .md files selected
+	mdFiles []string // dirs only: cached result of collectMdFiles
 }
 
 // Model is the bubbletea model for the file picker.
@@ -51,10 +53,34 @@ const headerLines = 3 // vault path + controls + blank line
 
 var (
 	checkedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	partialStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	dirStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	selectedStyle = lipgloss.NewStyle().Background(lipgloss.Color("236"))
-	filterStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	filterStyle   = partialStyle // same yellow
+	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
+
+// collectMdFiles returns all .md file paths under dir, recursively,
+// skipping dot-prefixed directories.
+func collectMdFiles(dir string) []string {
+	var files []string
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if path != dir && strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(info.Name(), ".md") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files
+}
 
 // NewPicker creates a new picker model rooted at root. preSelected is the set of already-registered paths.
 func NewPicker(root string, preSelected map[string]bool) *Model {
@@ -97,10 +123,25 @@ func (m *Model) loadItems() {
 		}
 		fullPath := filepath.Join(m.cwd, e.Name())
 		item := fileItem{
-			path:    fullPath,
-			name:    e.Name(),
-			isDir:   e.IsDir(),
-			checked: m.selected[fullPath],
+			path:  fullPath,
+			name:  e.Name(),
+			isDir: e.IsDir(),
+		}
+		if e.IsDir() {
+			files := collectMdFiles(fullPath)
+			item.mdFiles = files
+			count := 0
+			for _, f := range files {
+				if m.selected[f] {
+					count++
+				}
+			}
+			if len(files) > 0 {
+				item.checked = count == len(files)
+				item.partial = count > 0 && count < len(files)
+			}
+		} else {
+			item.checked = m.selected[fullPath]
 		}
 		items = append(items, item)
 	}
@@ -200,12 +241,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(visible) {
 				idx := m.itemIndex(visible[m.cursor])
 				if idx >= 0 {
-					m.items[idx].checked = !m.items[idx].checked
-					path := m.items[idx].path
-					if m.items[idx].checked {
-						m.selected[path] = true
+					item := &m.items[idx]
+					if item.isDir {
+						if item.checked {
+							// fully selected → deselect all
+							for _, f := range item.mdFiles {
+								delete(m.selected, f)
+							}
+							item.checked = false
+							item.partial = false
+						} else {
+							// unchecked or partial → select all
+							for _, f := range item.mdFiles {
+								m.selected[f] = true
+							}
+							item.checked = true
+							item.partial = false
+						}
 					} else {
-						delete(m.selected, path)
+						item.checked = !item.checked
+						if item.checked {
+							m.selected[item.path] = true
+						} else {
+							delete(m.selected, item.path)
+						}
 					}
 				}
 			}
@@ -232,8 +291,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var sels []Selection
 			for _, p := range paths {
 				info, err := os.Stat(p)
-				isDir := err == nil && info.IsDir()
-				sels = append(sels, Selection{Path: p, IsDir: isDir})
+				if err != nil || info.IsDir() {
+					continue // only emit files
+				}
+				sels = append(sels, Selection{Path: p, IsDir: false})
 			}
 			m.done = true
 			m.result = PickerResult{Confirmed: true, Selections: sels}
@@ -309,6 +370,8 @@ func (m *Model) View() string {
 		check := "[ ]"
 		if item.checked {
 			check = checkedStyle.Render("[x]")
+		} else if item.partial {
+			check = partialStyle.Render("[~]")
 		}
 
 		name := item.name
@@ -325,9 +388,7 @@ func (m *Model) View() string {
 
 	// Scroll indicator
 	if len(visible) > lh {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-			fmt.Sprintf("  %d-%d of %d", m.offset+1, end, len(visible)),
-		) + "\n")
+		sb.WriteString(dimStyle.Render(fmt.Sprintf("  %d-%d of %d", m.offset+1, end, len(visible))) + "\n")
 	}
 
 	return sb.String()
