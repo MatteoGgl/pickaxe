@@ -8,6 +8,7 @@ import (
 
 	"github.com/matteo/pickaxe/internal/config"
 	"github.com/matteo/pickaxe/internal/registry"
+	"github.com/matteo/pickaxe/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -20,8 +21,63 @@ var addCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			// TUI mode — implemented in Task 13
-			return fmt.Errorf("interactive picker not yet implemented; provide a path")
+			globalCfgPath := config.DefaultGlobalConfigPath()
+			globalCfg, err := config.ReadGlobalConfig(globalCfgPath)
+			if err != nil {
+				return fmt.Errorf("vault root not configured; run 'pickaxe config set vault <path>' first")
+			}
+
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			registryPath := filepath.Join(cwd, config.ProjectConfigFilename)
+
+			cfg, err := config.ReadProjectConfig(registryPath)
+			if err != nil {
+				return fmt.Errorf("no .pickaxe.json found; run 'pickaxe init' first")
+			}
+
+			preSelected := map[string]bool{}
+			for _, entry := range cfg.Entries {
+				preSelected[entry.Path] = true
+			}
+
+			result, err := tui.Run(globalCfg.VaultRoot, preSelected)
+			if err != nil {
+				return fmt.Errorf("picker error: %w", err)
+			}
+			if !result.Confirmed || len(result.Selections) == 0 {
+				fmt.Println("no changes made")
+				return nil
+			}
+
+			changed := false
+			for _, sel := range result.Selections {
+				if preSelected[sel.Path] {
+					continue
+				}
+				if sel.IsDir {
+					if err := registry.AddDir(cfg, sel.Path, "", false); err != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not add %s: %v\n", sel.Path, err)
+						continue
+					}
+				} else {
+					if err := registry.AddFile(cfg, sel.Path, ""); err != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not add %s: %v\n", sel.Path, err)
+						continue
+					}
+				}
+				fmt.Printf("registered: %s\n", sel.Path)
+				changed = true
+			}
+
+			if !changed {
+				fmt.Println("no new entries added")
+				return nil
+			}
+
+			return config.WriteProjectConfig(registryPath, cfg)
 		}
 
 		rawPath := args[0]
