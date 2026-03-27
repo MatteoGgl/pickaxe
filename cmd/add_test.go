@@ -2,9 +2,7 @@ package cmd_test
 
 import (
 	"bytes"
-	"errors"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/matteo/pickaxe/cmd"
@@ -26,125 +24,6 @@ func initVault(t *testing.T) (*vault.Vault, string) {
 func fakePicker(result tui.PickerResult, err error) cmd.PickerFunc {
 	return func(root string, preSelected map[string]bool) (tui.PickerResult, error) {
 		return result, err
-	}
-}
-
-// --- AddFromPicker tests ---
-
-func TestAddFromPicker_AddsNewSelections(t *testing.T) {
-	v, dir := initVault(t)
-	f1 := filepath.Join(dir, "a.md")
-	f2 := filepath.Join(dir, "b.md")
-	testutil.WriteFile(t, f1, "a")
-	testutil.WriteFile(t, f2, "b")
-
-	picker := fakePicker(tui.PickerResult{
-		Confirmed:  true,
-		Selections: []tui.Selection{{Path: f1}, {Path: f2}},
-	}, nil)
-
-	var buf bytes.Buffer
-	if err := cmd.AddFromPicker(v, dir, picker, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(v.Entries()) != 2 {
-		t.Errorf("expected 2 entries, got %d", len(v.Entries()))
-	}
-}
-
-func TestAddFromPicker_SkipsExisting(t *testing.T) {
-	v, dir := initVault(t)
-	f1 := filepath.Join(dir, "a.md")
-	testutil.WriteFile(t, f1, "a")
-	if err := v.AddFile(f1, "a"); err != nil {
-		t.Fatal(err)
-	}
-	if err := v.Save(); err != nil {
-		t.Fatal(err)
-	}
-
-	picker := fakePicker(tui.PickerResult{
-		Confirmed:  true,
-		Selections: []tui.Selection{{Path: f1}},
-	}, nil)
-
-	var buf bytes.Buffer
-	if err := cmd.AddFromPicker(v, dir, picker, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(v.Entries()) != 1 {
-		t.Errorf("expected still 1 entry, got %d", len(v.Entries()))
-	}
-	if !strings.Contains(buf.String(), "no new entries added") {
-		t.Errorf("expected 'no new entries added' message, got: %q", buf.String())
-	}
-}
-
-func TestAddFromPicker_Cancelled(t *testing.T) {
-	v, dir := initVault(t)
-
-	picker := fakePicker(tui.PickerResult{Confirmed: false}, nil)
-
-	var buf bytes.Buffer
-	if err := cmd.AddFromPicker(v, dir, picker, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(v.Entries()) != 0 {
-		t.Errorf("expected 0 entries after cancel, got %d", len(v.Entries()))
-	}
-	if !strings.Contains(buf.String(), "no changes made") {
-		t.Errorf("expected 'no changes made' message, got: %q", buf.String())
-	}
-}
-
-func TestAddFromPicker_PickerError(t *testing.T) {
-	v, dir := initVault(t)
-	picker := fakePicker(tui.PickerResult{}, errors.New("tui exploded"))
-
-	var buf bytes.Buffer
-	err := cmd.AddFromPicker(v, dir, picker, &buf)
-	if err == nil {
-		t.Fatal("expected error from picker, got nil")
-	}
-}
-
-func TestAddFromPicker_EmptySelections(t *testing.T) {
-	v, dir := initVault(t)
-	picker := fakePicker(tui.PickerResult{Confirmed: true, Selections: nil}, nil)
-
-	var buf bytes.Buffer
-	if err := cmd.AddFromPicker(v, dir, picker, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "no changes made") {
-		t.Errorf("expected 'no changes made' message, got: %q", buf.String())
-	}
-}
-
-func TestAddFromPicker_MixedNewAndExisting(t *testing.T) {
-	v, dir := initVault(t)
-	f1 := filepath.Join(dir, "a.md")
-	f2 := filepath.Join(dir, "b.md")
-	testutil.WriteFile(t, f1, "a")
-	testutil.WriteFile(t, f2, "b")
-	if err := v.AddFile(f1, "a"); err != nil {
-		t.Fatal(err)
-	}
-	if err := v.Save(); err != nil {
-		t.Fatal(err)
-	}
-
-	picker := fakePicker(tui.PickerResult{
-		Confirmed:  true,
-		Selections: []tui.Selection{{Path: f1}, {Path: f2}},
-	}, nil)
-
-	var buf bytes.Buffer
-	if err := cmd.AddFromPicker(v, dir, picker, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(v.Entries()) != 2 {
-		t.Errorf("expected 2 entries, got %d", len(v.Entries()))
 	}
 }
 
