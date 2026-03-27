@@ -3,10 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 
-	"github.com/matteo/pickaxe/internal/config"
-	"github.com/matteo/pickaxe/internal/registry"
+	"github.com/matteo/pickaxe/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -18,38 +17,46 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		registryPath := filepath.Join(cwd, config.ProjectConfigFilename)
 
-		cfg, err := config.ReadProjectConfig(registryPath)
+		v, err := vault.Open(cwd)
 		if err != nil {
 			return fmt.Errorf("no .pickaxe.json found; run 'pickaxe init' first")
 		}
 
-		if len(cfg.Entries) == 0 {
+		entries := v.Entries()
+		if len(entries) == 0 {
 			fmt.Println("no entries registered")
 			return nil
 		}
 
-		for _, entry := range cfg.Entries {
-			files, err := registry.EnumerateFiles(entry)
-			if err != nil {
-				fmt.Printf("  [%s] %s — ERROR: %v\n", entry.Type, entry.Name, err)
+		allFiles, listErr := vault.ListFiles(cwd)
+
+		for _, entry := range entries {
+			if listErr != nil {
+				fmt.Printf("  [%s] %s — ERROR: %v\n", entry.Type, entry.Name, listErr)
 				continue
 			}
-			if entry.Type == config.EntryTypeDir {
+			if entry.Type == vault.EntryTypeDir {
+				prefix := entry.Name + "/"
+				count := 0
+				for _, f := range allFiles {
+					if strings.HasPrefix(f.Name, prefix) {
+						count++
+					}
+				}
 				fmt.Printf("  [dir] %s (%s", entry.Name, entry.Path)
 				if entry.Recursive {
 					fmt.Print(", recursive")
 				}
-				fmt.Printf(") — %d file(s)\n", len(files))
+				fmt.Printf(") — %d file(s)\n", count)
 			} else {
-				for _, f := range files {
-					status := "ok"
-					if f.Unavailable {
+				status := "ok"
+				for _, f := range allFiles {
+					if f.Name == entry.Name && f.Unavailable {
 						status = "UNAVAILABLE"
 					}
-					fmt.Printf("  [file] %s (%s) — %s\n", f.Name, f.Path, status)
 				}
+				fmt.Printf("  [file] %s (%s) — %s\n", entry.Name, entry.Path, status)
 			}
 		}
 		return nil

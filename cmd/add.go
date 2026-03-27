@@ -3,12 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/matteo/pickaxe/internal/config"
-	"github.com/matteo/pickaxe/internal/registry"
+	"github.com/matteo/pickaxe/internal/pathutil"
 	"github.com/matteo/pickaxe/internal/tui"
+	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteo/pickaxe/internal/workflow"
 	"github.com/spf13/cobra"
 )
 
@@ -31,17 +32,13 @@ var addCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			registryPath := filepath.Join(cwd, config.ProjectConfigFilename)
 
-			cfg, err := config.ReadProjectConfig(registryPath)
+			v, err := vault.Open(cwd)
 			if err != nil {
 				return fmt.Errorf("no .pickaxe.json found; run 'pickaxe init' first")
 			}
 
-			preSelected := map[string]bool{}
-			for _, entry := range cfg.Entries {
-				preSelected[entry.Path] = true
-			}
+			preSelected := workflow.BuildPreSelected(v.Entries())
 
 			result, err := tui.Run(globalCfg.VaultRoot, preSelected)
 			if err != nil {
@@ -52,42 +49,38 @@ var addCmd = &cobra.Command{
 				return nil
 			}
 
-			changed := false
-			for _, sel := range result.Selections {
-				if preSelected[sel.Path] {
-					continue
-				}
+			sels := make([]workflow.Selection, len(result.Selections))
+			for i, s := range result.Selections {
+				sels[i] = workflow.Selection{Path: s.Path, IsDir: s.IsDir}
+			}
+			plan := workflow.DiffSelections(v.Entries(), sels)
+
+			if len(plan.Additions) == 0 {
+				fmt.Println("no new entries added")
+				return nil
+			}
+
+			for _, sel := range plan.Additions {
 				if sel.IsDir {
-					if err := registry.AddDir(cfg, sel.Path, "", false); err != nil {
+					if err := v.AddDir(sel.Path, "", false); err != nil {
 						fmt.Fprintf(os.Stderr, "warning: could not add %s: %v\n", sel.Path, err)
 						continue
 					}
 				} else {
-					if err := registry.AddFile(cfg, sel.Path, ""); err != nil {
+					if err := v.AddFile(sel.Path, ""); err != nil {
 						fmt.Fprintf(os.Stderr, "warning: could not add %s: %v\n", sel.Path, err)
 						continue
 					}
 				}
 				fmt.Printf("registered: %s\n", sel.Path)
-				changed = true
 			}
 
-			if !changed {
-				fmt.Println("no new entries added")
-				return nil
-			}
-
-			return config.WriteProjectConfig(registryPath, cfg)
+			return v.Save()
 		}
 
 		rawPath := args[0]
 
-		if len(rawPath) > 1 && rawPath[:2] == "~/" {
-			home, _ := os.UserHomeDir()
-			rawPath = home + rawPath[1:]
-		}
-
-		absPath, err := filepath.Abs(rawPath)
+		absPath, err := pathutil.ExpandAndResolve(rawPath)
 		if err != nil {
 			return fmt.Errorf("invalid path: %w", err)
 		}
@@ -96,9 +89,8 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		registryPath := filepath.Join(cwd, config.ProjectConfigFilename)
 
-		cfg, err := config.ReadProjectConfig(registryPath)
+		v, err := vault.Open(cwd)
 		if err != nil {
 			return fmt.Errorf("no .pickaxe.json found; run 'pickaxe init' first")
 		}
@@ -109,16 +101,16 @@ var addCmd = &cobra.Command{
 		}
 
 		if info.IsDir() || strings.HasSuffix(rawPath, "/") {
-			if err := registry.AddDir(cfg, absPath, addAlias, addRecursive); err != nil {
+			if err := v.AddDir(absPath, addAlias, addRecursive); err != nil {
 				return err
 			}
 		} else {
-			if err := registry.AddFile(cfg, absPath, addAlias); err != nil {
+			if err := v.AddFile(absPath, addAlias); err != nil {
 				return err
 			}
 		}
 
-		if err := config.WriteProjectConfig(registryPath, cfg); err != nil {
+		if err := v.Save(); err != nil {
 			return fmt.Errorf("write .pickaxe.json: %w", err)
 		}
 

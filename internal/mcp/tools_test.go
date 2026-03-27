@@ -8,26 +8,30 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matteo/pickaxe/internal/config"
 	internalmcp "github.com/matteo/pickaxe/internal/mcp"
 	"github.com/matteo/pickaxe/internal/testutil"
+	"github.com/matteo/pickaxe/internal/vault"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// writeRegistry writes a ProjectConfig as .pickaxe.json in dir and returns the path.
-func writeRegistry(t *testing.T, dir string, cfg *config.ProjectConfig) string {
+// writeRegistry writes a .pickaxe.json with the given entries directly as JSON (no path validation).
+func writeRegistry(t *testing.T, dir string, entries []vault.Entry) string {
 	t.Helper()
-	path := filepath.Join(dir, config.ProjectConfigFilename)
-	if err := config.WriteProjectConfig(path, cfg); err != nil {
+	if entries == nil {
+		entries = []vault.Entry{}
+	}
+	data, err := json.Marshal(map[string]any{"version": 1, "entries": entries})
+	if err != nil {
 		t.Fatal(err)
 	}
-	return path
+	testutil.WriteFile(t, filepath.Join(dir, vault.ConfigFilename), string(data))
+	return dir
 }
 
 func TestListVaultFiles_Empty(t *testing.T) {
 	dir := testutil.TempDir(t)
-	path := writeRegistry(t, dir, &config.ProjectConfig{Version: 1, Entries: []config.Entry{}})
-	handler := internalmcp.MakeListVaultFilesHandler(path)
+	writeRegistry(t, dir, nil)
+	handler := internalmcp.MakeListVaultFilesHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
 	if err != nil {
@@ -36,7 +40,6 @@ func TestListVaultFiles_Empty(t *testing.T) {
 	if result.IsError {
 		t.Fatal("expected non-error result")
 	}
-	// Should return [] not null
 	text := result.Content[0].(*sdkmcp.TextContent).Text
 	var items []any
 	if err := json.Unmarshal([]byte(text), &items); err != nil {
@@ -52,13 +55,10 @@ func TestListVaultFiles_WithFile(t *testing.T) {
 	filePath := filepath.Join(dir, "adrs.md")
 	testutil.WriteFile(t, filePath, "# ADRs")
 
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: filePath, Name: "adrs"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: filePath, Name: "adrs"},
 	})
-	handler := internalmcp.MakeListVaultFilesHandler(path)
+	handler := internalmcp.MakeListVaultFilesHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
 	if err != nil {
@@ -71,13 +71,10 @@ func TestListVaultFiles_WithFile(t *testing.T) {
 
 func TestListVaultFiles_UnavailableFile(t *testing.T) {
 	dir := testutil.TempDir(t)
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: "/nonexistent/file.md", Name: "ghost"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: "/nonexistent/file.md", Name: "ghost"},
 	})
-	handler := internalmcp.MakeListVaultFilesHandler(path)
+	handler := internalmcp.MakeListVaultFilesHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
 	if err != nil {
@@ -89,7 +86,7 @@ func TestListVaultFiles_UnavailableFile(t *testing.T) {
 }
 
 func TestListVaultFiles_NoRegistry(t *testing.T) {
-	handler := internalmcp.MakeListVaultFilesHandler("/nonexistent/.pickaxe.json")
+	handler := internalmcp.MakeListVaultFilesHandler("/nonexistent/dir")
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
 	if err != nil {
@@ -105,13 +102,10 @@ func TestReadVaultFile_Success(t *testing.T) {
 	filePath := filepath.Join(dir, "adrs.md")
 	testutil.WriteFile(t, filePath, "# ADRs\nDecision 1")
 
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: filePath, Name: "adrs"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: filePath, Name: "adrs"},
 	})
-	handler := internalmcp.MakeReadVaultFileHandler(path)
+	handler := internalmcp.MakeReadVaultFileHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "adrs"})
 	if err != nil {
@@ -124,8 +118,8 @@ func TestReadVaultFile_Success(t *testing.T) {
 
 func TestReadVaultFile_NotRegistered(t *testing.T) {
 	dir := testutil.TempDir(t)
-	path := writeRegistry(t, dir, &config.ProjectConfig{Version: 1, Entries: []config.Entry{}})
-	handler := internalmcp.MakeReadVaultFileHandler(path)
+	writeRegistry(t, dir, nil)
+	handler := internalmcp.MakeReadVaultFileHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "nonexistent"})
 	if err != nil {
@@ -138,13 +132,10 @@ func TestReadVaultFile_NotRegistered(t *testing.T) {
 
 func TestReadVaultFile_UnavailableFile(t *testing.T) {
 	dir := testutil.TempDir(t)
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: "/nonexistent/file.md", Name: "ghost"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: "/nonexistent/file.md", Name: "ghost"},
 	})
-	handler := internalmcp.MakeReadVaultFileHandler(path)
+	handler := internalmcp.MakeReadVaultFileHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "ghost"})
 	if err != nil {
@@ -156,7 +147,7 @@ func TestReadVaultFile_UnavailableFile(t *testing.T) {
 }
 
 func TestReadVaultFile_NoRegistry(t *testing.T) {
-	handler := internalmcp.MakeReadVaultFileHandler("/nonexistent/.pickaxe.json")
+	handler := internalmcp.MakeReadVaultFileHandler("/nonexistent/dir")
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "anything"})
 	if err != nil {
@@ -172,13 +163,10 @@ func TestListVaultFiles_NoPathInResponse(t *testing.T) {
 	filePath := filepath.Join(dir, "note.md")
 	testutil.WriteFile(t, filePath, "hello")
 
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: filePath, Name: "note"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: filePath, Name: "note"},
 	})
-	handler := internalmcp.MakeListVaultFilesHandler(path)
+	handler := internalmcp.MakeListVaultFilesHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
 	if err != nil {
@@ -198,13 +186,10 @@ func TestListVaultFiles_NoPathInResponse(t *testing.T) {
 
 func TestListVaultFiles_UnavailableNoPath(t *testing.T) {
 	dir := testutil.TempDir(t)
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: "/nonexistent/secret/file.md", Name: "ghost"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: "/nonexistent/secret/file.md", Name: "ghost"},
 	})
-	handler := internalmcp.MakeListVaultFilesHandler(path)
+	handler := internalmcp.MakeListVaultFilesHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
 	if err != nil {
@@ -225,13 +210,10 @@ func TestListVaultFiles_UnavailableNoPath(t *testing.T) {
 func TestReadVaultFile_UnavailableErrorNoPath(t *testing.T) {
 	dir := testutil.TempDir(t)
 	const secretPath = "/nonexistent/secret/private.md"
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: secretPath, Name: "secret"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: secretPath, Name: "secret"},
 	})
-	handler := internalmcp.MakeReadVaultFileHandler(path)
+	handler := internalmcp.MakeReadVaultFileHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "secret"})
 	if err != nil {
@@ -255,13 +237,10 @@ func TestReadVaultFile_ReadErrorNoPath(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(filePath, 0o644) })
 
-	path := writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{
-			{Type: config.EntryTypeFile, Path: filePath, Name: "locked"},
-		},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: filePath, Name: "locked"},
 	})
-	handler := internalmcp.MakeReadVaultFileHandler(path)
+	handler := internalmcp.MakeReadVaultFileHandler(dir)
 
 	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "locked"})
 	if err != nil {
@@ -278,8 +257,8 @@ func TestReadVaultFile_ReadErrorNoPath(t *testing.T) {
 
 func TestListVaultFiles_ReloadsAfterChange(t *testing.T) {
 	dir := testutil.TempDir(t)
-	path := writeRegistry(t, dir, &config.ProjectConfig{Version: 1, Entries: []config.Entry{}})
-	handler := internalmcp.MakeListVaultFilesHandler(path)
+	writeRegistry(t, dir, nil)
+	handler := internalmcp.MakeListVaultFilesHandler(dir)
 
 	// First call: empty
 	result, _, _ := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
@@ -293,9 +272,8 @@ func TestListVaultFiles_ReloadsAfterChange(t *testing.T) {
 	// Update registry on disk
 	filePath := filepath.Join(dir, "note.md")
 	testutil.WriteFile(t, filePath, "hello")
-	writeRegistry(t, dir, &config.ProjectConfig{
-		Version: 1,
-		Entries: []config.Entry{{Type: config.EntryTypeFile, Path: filePath, Name: "note"}},
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: filePath, Name: "note"},
 	})
 
 	// Second call: should see the new entry

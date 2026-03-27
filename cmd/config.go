@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/matteo/pickaxe/internal/config"
+	"github.com/matteo/pickaxe/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
@@ -23,18 +23,18 @@ var configSetCmd = &cobra.Command{
 			return fmt.Errorf("unknown config key %q; supported keys: vault", key)
 		}
 
+		expanded, err := pathutil.ExpandHome(value)
+		if err != nil {
+			return err
+		}
+
 		path := config.DefaultGlobalConfigPath()
 		cfg, err := config.ReadGlobalConfig(path)
 		if err != nil {
 			cfg = &config.GlobalConfig{}
 		}
 
-		if len(value) > 1 && value[:2] == "~/" {
-			home, _ := os.UserHomeDir()
-			value = home + value[1:]
-		}
-
-		cfg.VaultRoot = value
+		cfg.VaultRoot = expanded
 		if err := config.WriteGlobalConfig(path, cfg); err != nil {
 			return fmt.Errorf("write config: %w", err)
 		}

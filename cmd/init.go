@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/matteo/pickaxe/internal/config"
+	"github.com/matteo/pickaxe/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -18,17 +18,12 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		path := filepath.Join(cwd, config.ProjectConfigFilename)
-
-		if _, err := os.Stat(path); err == nil {
+		if _, err := vault.Init(cwd); errors.Is(err, vault.ErrAlreadyExists) {
 			return errors.New(".pickaxe.json already exists")
-		}
-
-		cfg := &config.ProjectConfig{Version: 1, Entries: []config.Entry{}}
-		if err := config.WriteProjectConfig(path, cfg); err != nil {
+		} else if err != nil {
 			return fmt.Errorf("create .pickaxe.json: %w", err)
 		}
-		fmt.Printf("created %s\n", path)
+		fmt.Printf("created %s\n", filepath.Join(cwd, vault.ConfigFilename))
 		return nil
 	},
 }

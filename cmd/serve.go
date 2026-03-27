@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
-	"github.com/matteo/pickaxe/internal/config"
 	internalmcp "github.com/matteo/pickaxe/internal/mcp"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -21,9 +19,7 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		registryPath := filepath.Join(cwd, config.ProjectConfigFilename)
-
-		s := internalmcp.NewServer(registryPath)
+		s := internalmcp.NewServer(cwd)
 		if err := s.Run(context.Background(), &sdkmcp.StdioTransport{}); err != nil && err != io.EOF {
 			fmt.Fprintf(os.Stderr, "pickaxe serve: %v\n", err)
 		}

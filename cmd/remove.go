@@ -3,10 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/matteo/pickaxe/internal/config"
-	"github.com/matteo/pickaxe/internal/registry"
+	"github.com/matteo/pickaxe/internal/vault"
 	"github.com/spf13/cobra"
 )
 
@@ -21,18 +19,17 @@ var removeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		registryPath := filepath.Join(cwd, config.ProjectConfigFilename)
 
-		cfg, err := config.ReadProjectConfig(registryPath)
+		v, err := vault.Open(cwd)
 		if err != nil {
 			return fmt.Errorf("no .pickaxe.json found; run 'pickaxe init' first")
 		}
 
-		if err := registry.Remove(cfg, name); err != nil {
+		if err := v.Remove(name); err != nil {
 			return err
 		}
 
-		if err := config.WriteProjectConfig(registryPath, cfg); err != nil {
+		if err := v.Save(); err != nil {
 			return fmt.Errorf("write .pickaxe.json: %w", err)
 		}
 
