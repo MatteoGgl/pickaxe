@@ -23,16 +23,8 @@ var serveCmd = &cobra.Command{
 		}
 		registryPath := filepath.Join(cwd, config.ProjectConfigFilename)
 
-		var cfg *config.ProjectConfig
-		if loaded, err := config.ReadProjectConfig(registryPath); err == nil {
-			cfg = loaded
-		} else {
-			fmt.Fprintf(os.Stderr, "pickaxe: no .pickaxe.json found, serving empty registry\n")
-		}
-
-		s := internalmcp.NewServer(cfg)
+		s := internalmcp.NewServer(registryPath)
 		if err := s.Run(context.Background(), &sdkmcp.StdioTransport{}); err != nil && err != io.EOF {
-			// Non-EOF errors are unexpected; EOF means client disconnected normally.
 			fmt.Fprintf(os.Stderr, "pickaxe serve: %v\n", err)
 		}
 		return nil

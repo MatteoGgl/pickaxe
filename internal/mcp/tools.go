@@ -26,10 +26,21 @@ type ReadVaultFileParams struct {
 	Name string `json:"name"`
 }
 
+// loadRegistry reads .pickaxe.json from registryPath on each call so changes
+// made by `pickaxe add` are visible without restarting the server.
+// Returns nil if the file doesn't exist.
+func loadRegistry(registryPath string) *config.ProjectConfig {
+	cfg, err := config.ReadProjectConfig(registryPath)
+	if err != nil {
+		return nil
+	}
+	return cfg
+}
+
 // MakeListVaultFilesHandler returns the handler for the list_vault_files tool.
-// cfg may be nil (no .pickaxe.json found) — returns empty list with a note.
-func MakeListVaultFilesHandler(cfg *config.ProjectConfig) func(context.Context, *sdkmcp.CallToolRequest, ListVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
+func MakeListVaultFilesHandler(registryPath string) func(context.Context, *sdkmcp.CallToolRequest, ListVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest, _ ListVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
+		cfg := loadRegistry(registryPath)
 		if cfg == nil {
 			msg := "no .pickaxe.json found in this project; run 'pickaxe init' to set up a registry"
 			return &sdkmcp.CallToolResult{
@@ -72,16 +83,16 @@ func MakeListVaultFilesHandler(cfg *config.ProjectConfig) func(context.Context, 
 }
 
 // MakeReadVaultFileHandler returns the handler for the read_vault_file tool.
-func MakeReadVaultFileHandler(cfg *config.ProjectConfig) func(context.Context, *sdkmcp.CallToolRequest, ReadVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
+func MakeReadVaultFileHandler(registryPath string) func(context.Context, *sdkmcp.CallToolRequest, ReadVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest, args ReadVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
 		errResult := func(msg string) (*sdkmcp.CallToolResult, any, error) {
-			r := &sdkmcp.CallToolResult{
+			return &sdkmcp.CallToolResult{
 				Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: msg}},
 				IsError: true,
-			}
-			return r, nil, nil
+			}, nil, nil
 		}
 
+		cfg := loadRegistry(registryPath)
 		if cfg == nil {
 			return errResult("no .pickaxe.json found in this project")
 		}
