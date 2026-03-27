@@ -341,6 +341,42 @@ func TestReadFile_NotInitialized(t *testing.T) {
 	}
 }
 
+func TestReadFile_StripsFrontmatter(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "---\ntitle: secret\ntags: [a, b]\n---\n\n# Hello")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note")
+	_ = v.Save()
+
+	content, err := vault.ReadFile(dir, "note")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if content != "\n# Hello" {
+		t.Errorf("frontmatter not stripped: got %q", content)
+	}
+}
+
+func TestReadFile_KeepsFrontmatterWhenDisabled(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	raw := "---\ntitle: secret\n---\n\n# Hello"
+	testutil.WriteFile(t, filePath, raw)
+
+	testutil.WriteFile(t, filepath.Join(dir, ".pickaxe.json"),
+		`{"version":1,"strip_frontmatter":false,"entries":[{"type":"file","path":"`+filePath+`","name":"note"}]}`)
+
+	content, err := vault.ReadFile(dir, "note")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if content != raw {
+		t.Errorf("frontmatter should be preserved: got %q", content)
+	}
+}
+
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

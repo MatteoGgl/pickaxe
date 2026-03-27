@@ -255,6 +255,32 @@ func TestReadVaultFile_ReadErrorNoPath(t *testing.T) {
 	}
 }
 
+func TestReadVaultFile_StripsFrontmatter(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "---\ntitle: secret\ntags: [a]\n---\n\n# Hello")
+
+	writeRegistry(t, dir, []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: filePath, Name: "note"},
+	})
+	handler := internalmcp.MakeReadVaultFileHandler(dir)
+
+	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if strings.Contains(text, "title: secret") {
+		t.Errorf("frontmatter not stripped: got %q", text)
+	}
+	if !strings.Contains(text, "# Hello") {
+		t.Errorf("body missing after strip: got %q", text)
+	}
+}
+
 func TestListVaultFiles_ReloadsAfterChange(t *testing.T) {
 	dir := testutil.TempDir(t)
 	writeRegistry(t, dir, nil)

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/matteo/pickaxe/internal/frontmatter"
 )
 
 // EntryType distinguishes file vs directory entries.
@@ -45,8 +47,13 @@ var (
 )
 
 type projectConfig struct {
-	Version int     `json:"version"`
-	Entries []Entry `json:"entries"`
+	Version          int     `json:"version"`
+	StripFrontmatter *bool   `json:"strip_frontmatter,omitempty"`
+	Entries          []Entry `json:"entries"`
+}
+
+func (v *Vault) shouldStripFrontmatter() bool {
+	return v.cfg.StripFrontmatter == nil || *v.cfg.StripFrontmatter
 }
 
 // Vault owns a single .pickaxe.json and its mutations.
@@ -263,5 +270,9 @@ func ReadFile(dir string, name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("could not read file %q", name)
 	}
-	return string(data), nil
+	content := string(data)
+	if v.shouldStripFrontmatter() && strings.HasSuffix(f.Path, ".md") {
+		content = frontmatter.Strip(content)
+	}
+	return content, nil
 }
