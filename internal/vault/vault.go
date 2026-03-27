@@ -204,6 +204,22 @@ func (v *Vault) Remove(name string) error {
 	return fmt.Errorf("%w: %q", ErrNotFound, name)
 }
 
+// RemoveByPath removes the entry with the given path. Returns ErrNotFound if absent.
+func (v *Vault) RemoveByPath(path string) error {
+	for i, e := range v.cfg.Entries {
+		if e.Path == path {
+			v.cfg.Entries = append(v.cfg.Entries[:i], v.cfg.Entries[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+// ReplaceEntries replaces all entries with the given slice.
+func (v *Vault) ReplaceEntries(entries []Entry) {
+	v.cfg.Entries = entries
+}
+
 // DefaultName derives the short name from a file or directory path.
 func DefaultName(path string) string {
 	clean := strings.TrimRight(path, "/")

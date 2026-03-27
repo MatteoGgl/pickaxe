@@ -242,6 +242,73 @@ func TestRemove_NotFound(t *testing.T) {
 	}
 }
 
+// --- RemoveByPath ---
+
+func TestRemoveByPath_Success(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "adrs.md")
+	testutil.WriteFile(t, filePath, "")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "")
+	if err := v.RemoveByPath(filePath); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(v.Entries()) != 0 {
+		t.Errorf("expected 0 entries after RemoveByPath, got %d", len(v.Entries()))
+	}
+}
+
+func TestRemoveByPath_NotFound(t *testing.T) {
+	dir := testutil.TempDir(t)
+	v, _ := vault.Init(dir)
+	err := v.RemoveByPath("/nonexistent/path.md")
+	if !errors.Is(err, vault.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// --- ReplaceEntries ---
+
+func TestReplaceEntries_ReplacesAll(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath1 := filepath.Join(dir, "file1.md")
+	filePath2 := filepath.Join(dir, "file2.md")
+	testutil.WriteFile(t, filePath1, "")
+	testutil.WriteFile(t, filePath2, "")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath1, "file1")
+	_ = v.AddFile(filePath2, "file2")
+
+	newEntries := []vault.Entry{
+		{Type: vault.EntryTypeFile, Path: filePath1, Name: "file1"},
+	}
+	v.ReplaceEntries(newEntries)
+
+	if len(v.Entries()) != 1 {
+		t.Errorf("expected 1 entry after ReplaceEntries, got %d", len(v.Entries()))
+	}
+	if v.Entries()[0].Name != "file1" {
+		t.Errorf("expected name %q, got %q", "file1", v.Entries()[0].Name)
+	}
+}
+
+func TestReplaceEntries_Empty(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "file.md")
+	testutil.WriteFile(t, filePath, "")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "file")
+
+	v.ReplaceEntries([]vault.Entry{})
+
+	if len(v.Entries()) != 0 {
+		t.Errorf("expected 0 entries after ReplaceEntries with empty slice, got %d", len(v.Entries()))
+	}
+}
+
 // --- ListFiles / ReadFile ---
 
 func TestListFiles_Flat(t *testing.T) {
