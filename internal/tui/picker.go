@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,12 +37,16 @@ type Model struct {
 	cwd         string
 	items       []fileItem
 	cursor      int
+	offset      int // first visible item index (for scrolling)
+	height      int // terminal height
 	filter      textinput.Model
 	filterMode  bool
 	preSelected map[string]bool
 	done        bool
 	result      PickerResult
 }
+
+const headerLines = 3 // vault path + controls + blank line
 
 var (
 	checkedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
@@ -61,6 +66,7 @@ func NewPicker(root string, preSelected map[string]bool) *Model {
 		cwd:         root,
 		filter:      ti,
 		preSelected: preSelected,
+		height:      24, // sensible default until WindowSizeMsg arrives
 	}
 	m.loadItems()
 	return m
@@ -107,6 +113,7 @@ func (m *Model) loadItems() {
 
 	m.items = items
 	m.cursor = 0
+	m.offset = 0
 }
 
 func (m *Model) visibleItems() []fileItem {
@@ -123,6 +130,30 @@ func (m *Model) visibleItems() []fileItem {
 	return filtered
 }
 
+// listHeight returns how many file rows fit in the terminal.
+func (m *Model) listHeight() int {
+	extra := 0
+	if m.filterMode {
+		extra = 2 // "Filter: ..." + blank line
+	}
+	h := m.height - headerLines - extra - 1 // -1 for scroll indicator line
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// clampOffset adjusts m.offset so cursor stays in view.
+func (m *Model) clampOffset() {
+	lh := m.listHeight()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+lh {
+		m.offset = m.cursor - lh + 1
+	}
+}
+
 func (m *Model) Init() tea.Cmd {
 	return nil
 }
@@ -133,6 +164,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+		m.clampOffset()
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -143,12 +178,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				m.clampOffset()
 			}
 
 		case "down", "j":
 			visible := m.visibleItems()
 			if m.cursor < len(visible)-1 {
 				m.cursor++
+				m.clampOffset()
 			}
 
 		case " ":
@@ -210,10 +247,14 @@ func (m *Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filterMode = false
 			m.filter.Blur()
 			m.filter.SetValue("")
+			m.cursor = 0
+			m.offset = 0
 			return m, nil
 		case "enter":
 			m.filterMode = false
 			m.filter.Blur()
+			m.cursor = 0
+			m.offset = 0
 			return m, nil
 		}
 	}
@@ -224,6 +265,7 @@ func (m *Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) View() string {
 	visible := m.visibleItems()
+	lh := m.listHeight()
 
 	var sb strings.Builder
 	sb.WriteString("  Vault: " + m.cwd + "\n")
@@ -233,9 +275,16 @@ func (m *Model) View() string {
 		sb.WriteString("  Filter: " + filterStyle.Render(m.filter.View()) + "\n\n")
 	}
 
-	for i, item := range visible {
+	end := m.offset + lh
+	if end > len(visible) {
+		end = len(visible)
+	}
+
+	for i, item := range visible[m.offset:end] {
+		absIdx := m.offset + i
+
 		cursor := "  "
-		if i == m.cursor {
+		if absIdx == m.cursor {
 			cursor = "> "
 		}
 
@@ -250,10 +299,17 @@ func (m *Model) View() string {
 		}
 
 		line := cursor + check + " " + name
-		if i == m.cursor {
+		if absIdx == m.cursor {
 			line = selectedStyle.Render(line)
 		}
 		sb.WriteString(line + "\n")
+	}
+
+	// Scroll indicator
+	if len(visible) > lh {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+			fmt.Sprintf("  %d-%d of %d", m.offset+1, end, len(visible)),
+		) + "\n")
 	}
 
 	return sb.String()
@@ -267,7 +323,7 @@ func (m *Model) Result() PickerResult {
 // Run starts the picker and returns the result.
 func Run(root string, preSelected map[string]bool) (PickerResult, error) {
 	m := NewPicker(root, preSelected)
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
 		return PickerResult{}, err
