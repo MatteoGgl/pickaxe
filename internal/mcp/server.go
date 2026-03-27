@@ -13,7 +13,7 @@ func NewServer(registryPath string) *sdkmcp.Server {
 	sdkmcp.AddTool(s,
 		&sdkmcp.Tool{
 			Name:        "list_vault_files",
-			Description: "List all vault files registered for this project. Returns name, path, last_modified, and unavailable status for each file.",
+			Description: "List all vault files registered for this project. Returns name, last_modified, and unavailable status for each file.",
 		},
 		MakeListVaultFilesHandler(registryPath),
 	)

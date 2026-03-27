@@ -13,7 +13,6 @@ import (
 
 type vaultFileInfo struct {
 	Name        string `json:"name"`
-	Path        string `json:"path"`
 	LastMod     string `json:"last_modified,omitempty"`
 	Unavailable bool   `json:"unavailable,omitempty"`
 }
@@ -54,7 +53,6 @@ func MakeListVaultFilesHandler(registryPath string) func(context.Context, *sdkmc
 			if err != nil {
 				infos = append(infos, vaultFileInfo{
 					Name:        entry.Name,
-					Path:        entry.Path,
 					Unavailable: true,
 				})
 				continue
@@ -62,7 +60,6 @@ func MakeListVaultFilesHandler(registryPath string) func(context.Context, *sdkmc
 			for _, f := range files {
 				info := vaultFileInfo{
 					Name:        f.Name,
-					Path:        f.Path,
 					Unavailable: f.Unavailable,
 				}
 				if !f.Unavailable {
@@ -110,11 +107,11 @@ func MakeReadVaultFileHandler(registryPath string) func(context.Context, *sdkmcp
 					continue
 				}
 				if f.Unavailable {
-					return errResult(fmt.Sprintf("file %q is currently unavailable (path: %s)", args.Name, f.Path))
+					return errResult(fmt.Sprintf("file %q is currently unavailable", args.Name))
 				}
 				data, err := os.ReadFile(f.Path)
 				if err != nil {
-					return errResult(fmt.Sprintf("read error: %v", err))
+					return errResult(fmt.Sprintf("could not read file %q", args.Name))
 				}
 				return &sdkmcp.CallToolResult{
 					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: string(data)}},

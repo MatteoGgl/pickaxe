@@ -3,7 +3,9 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/matteo/pickaxe/internal/config"
@@ -162,6 +164,115 @@ func TestReadVaultFile_NoRegistry(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected IsError=true with no registry")
+	}
+}
+
+func TestListVaultFiles_NoPathInResponse(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	path := writeRegistry(t, dir, &config.ProjectConfig{
+		Version: 1,
+		Entries: []config.Entry{
+			{Type: config.EntryTypeFile, Path: filePath, Name: "note"},
+		},
+	})
+	handler := internalmcp.MakeListVaultFilesHandler(path)
+
+	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	var items []map[string]any
+	if err := json.Unmarshal([]byte(text), &items); err != nil {
+		t.Fatalf("expected JSON array: %v", err)
+	}
+	for _, item := range items {
+		if _, ok := item["path"]; ok {
+			t.Errorf("path must not appear in list_vault_files response, got: %v", item)
+		}
+	}
+}
+
+func TestListVaultFiles_UnavailableNoPath(t *testing.T) {
+	dir := testutil.TempDir(t)
+	path := writeRegistry(t, dir, &config.ProjectConfig{
+		Version: 1,
+		Entries: []config.Entry{
+			{Type: config.EntryTypeFile, Path: "/nonexistent/secret/file.md", Name: "ghost"},
+		},
+	})
+	handler := internalmcp.MakeListVaultFilesHandler(path)
+
+	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ListVaultFilesParams{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	var items []map[string]any
+	if err := json.Unmarshal([]byte(text), &items); err != nil {
+		t.Fatalf("expected JSON array: %v", err)
+	}
+	for _, item := range items {
+		if _, ok := item["path"]; ok {
+			t.Errorf("path must not appear for unavailable files, got: %v", item)
+		}
+	}
+}
+
+func TestReadVaultFile_UnavailableErrorNoPath(t *testing.T) {
+	dir := testutil.TempDir(t)
+	const secretPath = "/nonexistent/secret/private.md"
+	path := writeRegistry(t, dir, &config.ProjectConfig{
+		Version: 1,
+		Entries: []config.Entry{
+			{Type: config.EntryTypeFile, Path: secretPath, Name: "secret"},
+		},
+	})
+	handler := internalmcp.MakeReadVaultFileHandler(path)
+
+	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "secret"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if strings.Contains(text, secretPath) {
+		t.Errorf("error message must not contain the file path, got: %q", text)
+	}
+}
+
+func TestReadVaultFile_ReadErrorNoPath(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "locked.md")
+	testutil.WriteFile(t, filePath, "secret content")
+	if err := os.Chmod(filePath, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(filePath, 0o644) })
+
+	path := writeRegistry(t, dir, &config.ProjectConfig{
+		Version: 1,
+		Entries: []config.Entry{
+			{Type: config.EntryTypeFile, Path: filePath, Name: "locked"},
+		},
+	})
+	handler := internalmcp.MakeReadVaultFileHandler(path)
+
+	result, _, err := handler(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "locked"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true for unreadable file")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if strings.Contains(text, filePath) {
+		t.Errorf("error message must not contain the file path, got: %q", text)
 	}
 }
 
