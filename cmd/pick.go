@@ -106,7 +106,8 @@ func sortedKeys(m map[string]bool) []string {
 }
 
 var pickCmd = &cobra.Command{
-	Use:   "pick",
+	Use:     "pick",
+	Aliases: []string{"p"},
 	Short: "Interactively add or remove vault entries",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -9,7 +9,8 @@ import (
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config",
+	Use:     "config",
+	Aliases: []string{"c"},
 	Short: "Manage global pickaxe configuration",
 }
 

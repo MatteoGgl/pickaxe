@@ -12,7 +12,8 @@ import (
 )
 
 var serveCmd = &cobra.Command{
-	Use:   "serve",
+	Use:     "serve",
+	Aliases: []string{"s"},
 	Short: "Start the MCP server (used by Claude Code)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()

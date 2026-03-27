@@ -20,7 +20,8 @@ var (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
+	Use:     "list",
+	Aliases: []string{"ls", "l"},
 	Short: "List all registered vault entries",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()

@@ -11,7 +11,8 @@ import (
 )
 
 var initCmd = &cobra.Command{
-	Use:   "init",
+	Use:     "init",
+	Aliases: []string{"i"},
 	Short: "Create a .pickaxe.json registry in the current directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()

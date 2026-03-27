@@ -33,7 +33,8 @@ func AddDirect(v *vault.Vault, absPath string, isDir bool, alias string, recursi
 }
 
 var addCmd = &cobra.Command{
-	Use:   "add <path>",
+	Use:     "add <path>",
+	Aliases: []string{"a"},
 	Short: "Register a vault file or directory",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

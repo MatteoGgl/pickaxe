@@ -58,14 +58,14 @@ Changes to `.pickaxe.json` are picked up immediately — no server restart neede
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `config set vault <path>` | Set Obsidian vault root |
-| `init` | Create `.pickaxe.json` in current dir |
-| `add [path]` | Register files (TUI if no path) |
-| `remove <name\|hash>` | Unregister an entry by name or hash prefix |
-| `list` | Show registered entries with hash IDs |
-| `serve` | Start MCP server (stdio) |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `config set vault <path>` | `c` | Set Obsidian vault root |
+| `init` | `i` | Create `.pickaxe.json` in current dir |
+| `add [path]` | `a` | Register files (TUI if no path) |
+| `remove <name\|hash>` | `rm`, `r` | Unregister an entry by name or hash prefix |
+| `list` | `ls`, `l` | Show registered entries with hash IDs |
+| `serve` | `s` | Start MCP server (stdio) |
 
 ## Hash IDs
 
