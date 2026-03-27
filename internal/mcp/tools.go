@@ -10,6 +10,12 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// VaultReader abstracts vault access for testability.
+type VaultReader interface {
+	ListFiles() ([]vault.ResolvedFile, error)
+	ReadFile(name string) (string, error)
+}
+
 type vaultFileInfo struct {
 	Name        string `json:"name"`
 	LastMod     string `json:"last_modified,omitempty"`
@@ -25,9 +31,9 @@ type ReadVaultFileParams struct {
 }
 
 // MakeListVaultFilesHandler returns the handler for the list_vault_files tool.
-func MakeListVaultFilesHandler(registryPath string) func(context.Context, *sdkmcp.CallToolRequest, ListVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
+func MakeListVaultFilesHandler(vr VaultReader) func(context.Context, *sdkmcp.CallToolRequest, ListVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest, _ ListVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
-		files, err := vault.ListFiles(registryPath)
+		files, err := vr.ListFiles()
 		if errors.Is(err, vault.ErrNotInitialized) {
 			msg := "no .pickaxe.json found in this project; run 'pickaxe init' to set up a registry"
 			return &sdkmcp.CallToolResult{
@@ -61,7 +67,7 @@ func MakeListVaultFilesHandler(registryPath string) func(context.Context, *sdkmc
 }
 
 // MakeReadVaultFileHandler returns the handler for the read_vault_file tool.
-func MakeReadVaultFileHandler(registryPath string) func(context.Context, *sdkmcp.CallToolRequest, ReadVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
+func MakeReadVaultFileHandler(vr VaultReader) func(context.Context, *sdkmcp.CallToolRequest, ReadVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest, args ReadVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
 		errResult := func(msg string) (*sdkmcp.CallToolResult, any, error) {
 			return &sdkmcp.CallToolResult{
@@ -74,7 +80,7 @@ func MakeReadVaultFileHandler(registryPath string) func(context.Context, *sdkmcp
 			return errResult("name parameter is required")
 		}
 
-		content, err := vault.ReadFile(registryPath, args.Name)
+		content, err := vr.ReadFile(args.Name)
 		if errors.Is(err, vault.ErrNotInitialized) {
 			return errResult("no .pickaxe.json found in this project")
 		}

@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"github.com/matteo/pickaxe/internal/vault"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -9,13 +10,14 @@ import (
 // are visible without restarting the server.
 func NewServer(registryPath string) *sdkmcp.Server {
 	s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "pickaxe", Version: "1.0.0"}, nil)
+	vr := vault.NewReader(registryPath)
 
 	sdkmcp.AddTool(s,
 		&sdkmcp.Tool{
 			Name:        "list_vault_files",
 			Description: "List all vault files registered for this project. Returns name, last_modified, and unavailable status for each file.",
 		},
-		MakeListVaultFilesHandler(registryPath),
+		MakeListVaultFilesHandler(vr),
 	)
 
 	sdkmcp.AddTool(s,
@@ -23,7 +25,7 @@ func NewServer(registryPath string) *sdkmcp.Server {
 			Name:        "read_vault_file",
 			Description: "Read the full content of a registered vault file by name. Use list_vault_files first to see available names.",
 		},
-		MakeReadVaultFileHandler(registryPath),
+		MakeReadVaultFileHandler(vr),
 	)
 
 	return s
