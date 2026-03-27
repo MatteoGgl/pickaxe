@@ -34,7 +34,8 @@ Single Go binary, two modes:
 **CLI mode** (`cmd/`) — cobra commands that manage `.pickaxe.json` in the project root:
 - `config set vault <path>` — writes `~/.config/pickaxe/config.json`
 - `init` — creates `.pickaxe.json` with empty entries
-- `add [path]` — no-arg opens TUI picker; with path registers file/dir directly
+- `pick` — interactive TUI picker to add/remove vault entries (expand + compact)
+- `add <path>` — register a file or directory directly (path required)
 - `remove <name>`, `list` — mutate/read `.pickaxe.json`
 - `serve` — starts the MCP server
 
