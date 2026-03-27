@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/matteo/pickaxe/internal/pathutil"
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/internal/pathutil"
+	"github.com/matteoggl/pickaxe/internal/vault"
 	"github.com/spf13/cobra"
 )
 

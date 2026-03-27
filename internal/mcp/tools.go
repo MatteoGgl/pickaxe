@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/internal/vault"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

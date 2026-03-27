@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	internalmcp "github.com/matteo/pickaxe/internal/mcp"
-	"github.com/matteo/pickaxe/internal/vault"
+	internalmcp "github.com/matteoggl/pickaxe/internal/mcp"
+	"github.com/matteoggl/pickaxe/internal/vault"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

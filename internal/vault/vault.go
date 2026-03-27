@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matteo/pickaxe/internal/frontmatter"
+	"github.com/matteoggl/pickaxe/internal/frontmatter"
 )
 
 // EntryType distinguishes file vs directory entries.

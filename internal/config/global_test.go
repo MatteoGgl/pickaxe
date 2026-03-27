@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/matteo/pickaxe/internal/config"
-	"github.com/matteo/pickaxe/internal/testutil"
+	"github.com/matteoggl/pickaxe/internal/config"
+	"github.com/matteoggl/pickaxe/internal/testutil"
 )
 
 func TestGlobalConfig_RoundTrip(t *testing.T) {

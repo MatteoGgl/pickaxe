@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/internal/vault"
 	"github.com/spf13/cobra"
 )
 

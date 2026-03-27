@@ -3,7 +3,7 @@ package vault_test
 import (
 	"testing"
 
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/internal/vault"
 )
 
 func TestBuildPreSelected(t *testing.T) {

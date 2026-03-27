@@ -5,7 +5,7 @@ Expose Obsidian vault files to Claude Code via MCP.
 ## Install
 
 ```sh
-go install github.com/matteo/pickaxe@latest
+go install github.com/matteoggl/pickaxe@latest
 ```
 
 Or build from source:

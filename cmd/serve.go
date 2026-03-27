@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	internalmcp "github.com/matteo/pickaxe/internal/mcp"
+	internalmcp "github.com/matteoggl/pickaxe/internal/mcp"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )

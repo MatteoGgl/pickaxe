@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/internal/vault"
 )
 
 func TestHashEntry_Deterministic(t *testing.T) {

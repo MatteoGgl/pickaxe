@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matteo/pickaxe/internal/pathutil"
+	"github.com/matteoggl/pickaxe/internal/pathutil"
 )
 
 func TestExpandHome_Tilde(t *testing.T) {

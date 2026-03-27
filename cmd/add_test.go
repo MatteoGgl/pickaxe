@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/matteo/pickaxe/cmd"
-	"github.com/matteo/pickaxe/internal/testutil"
-	"github.com/matteo/pickaxe/internal/tui"
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/cmd"
+	"github.com/matteoggl/pickaxe/internal/testutil"
+	"github.com/matteoggl/pickaxe/internal/tui"
+	"github.com/matteoggl/pickaxe/internal/vault"
 )
 
 func initVault(t *testing.T) (*vault.Vault, string) {

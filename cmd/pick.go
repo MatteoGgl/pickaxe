@@ -6,9 +6,9 @@ import (
 	"os"
 	"sort"
 
-	"github.com/matteo/pickaxe/internal/config"
-	"github.com/matteo/pickaxe/internal/tui"
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/internal/config"
+	"github.com/matteoggl/pickaxe/internal/tui"
+	"github.com/matteoggl/pickaxe/internal/vault"
 	"github.com/spf13/cobra"
 )
 

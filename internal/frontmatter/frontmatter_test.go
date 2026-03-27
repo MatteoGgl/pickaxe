@@ -3,7 +3,7 @@ package frontmatter_test
 import (
 	"testing"
 
-	"github.com/matteo/pickaxe/internal/frontmatter"
+	"github.com/matteoggl/pickaxe/internal/frontmatter"
 )
 
 func TestStrip(t *testing.T) {

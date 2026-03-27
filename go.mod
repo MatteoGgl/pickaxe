@@ -1,4 +1,4 @@
-module github.com/matteo/pickaxe
+module github.com/matteoggl/pickaxe
 
 go 1.26.1
 

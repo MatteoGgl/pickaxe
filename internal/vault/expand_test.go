@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/matteo/pickaxe/internal/testutil"
-	"github.com/matteo/pickaxe/internal/vault"
+	"github.com/matteoggl/pickaxe/internal/testutil"
+	"github.com/matteoggl/pickaxe/internal/vault"
 )
 
 func TestExpandEntries_FileEntry(t *testing.T) {

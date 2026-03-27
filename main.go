@@ -1,6 +1,6 @@
 package main
 
-import "github.com/matteo/pickaxe/cmd"
+import "github.com/matteoggl/pickaxe/cmd"
 
 func main() {
 	cmd.Execute()

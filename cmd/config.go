@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/matteo/pickaxe/internal/config"
-	"github.com/matteo/pickaxe/internal/pathutil"
+	"github.com/matteoggl/pickaxe/internal/config"
+	"github.com/matteoggl/pickaxe/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
