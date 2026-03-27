@@ -5,8 +5,18 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/matteo/pickaxe/internal/vault"
 	"github.com/spf13/cobra"
+)
+
+var (
+	styleBold = lipgloss.NewStyle().Bold(true)
+	styleDim  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	styleFile = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan
+	styleDir  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow
+	styleOK   = lipgloss.NewStyle().Foreground(lipgloss.Color("2")) // green
+	styleBad  = lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // red
 )
 
 var listCmd = &cobra.Command{
@@ -30,10 +40,19 @@ var listCmd = &cobra.Command{
 		}
 
 		allFiles, listErr := vault.ListFiles(cwd)
+		ht := vault.NewHashTable(entries)
 
 		for _, entry := range entries {
+			shortHash := ht.ShortHash(entry.Name)
+			plen := ht.ShortPrefixLen(entry.Name)
+			styledHash := styleBold.Render(shortHash[:plen]) + styleDim.Render(shortHash[plen:])
+
 			if listErr != nil {
-				fmt.Printf("  [%s] %s — ERROR: %v\n", entry.Type, entry.Name, listErr)
+				badge := styleFile.Render("[file]")
+				if entry.Type == vault.EntryTypeDir {
+					badge = styleDir.Render("[dir]")
+				}
+				fmt.Printf("  %s %s %s — %s\n", styledHash, badge, styleBold.Render(entry.Name), styleBad.Render("ERROR: "+listErr.Error()))
 				continue
 			}
 			if entry.Type == vault.EntryTypeDir {
@@ -44,19 +63,26 @@ var listCmd = &cobra.Command{
 						count++
 					}
 				}
-				fmt.Printf("  [dir] %s (%s", entry.Name, entry.Path)
+				meta := styleDim.Render(entry.Path)
 				if entry.Recursive {
-					fmt.Print(", recursive")
+					meta += styleDim.Render(", recursive")
 				}
-				fmt.Printf(") — %d file(s)\n", count)
+				fileCount := styleDim.Render(fmt.Sprintf("%d files", count))
+				fmt.Printf("  %s %s %s %s — %s\n", styledHash, styleDir.Render("[dir]"), styleBold.Render(entry.Name), meta, fileCount)
 			} else {
-				status := "ok"
+				unavailable := false
 				for _, f := range allFiles {
 					if f.Name == entry.Name && f.Unavailable {
-						status = "UNAVAILABLE"
+						unavailable = true
 					}
 				}
-				fmt.Printf("  [file] %s (%s) — %s\n", entry.Name, entry.Path, status)
+				var status string
+				if unavailable {
+					status = styleBad.Render("unavailable")
+				} else {
+					status = styleOK.Render("✓")
+				}
+				fmt.Printf("  %s %s %s %s %s\n", styledHash, styleFile.Render("[file]"), styleBold.Render(entry.Name), styleDim.Render(entry.Path), status)
 			}
 		}
 		return nil

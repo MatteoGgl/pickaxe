@@ -377,6 +377,75 @@ func TestReadFile_KeepsFrontmatterWhenDisabled(t *testing.T) {
 	}
 }
 
+// --- ResolveIdentifier ---
+
+func TestResolveIdentifier_ByName(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "adrs.md")
+	testutil.WriteFile(t, filePath, "")
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "adrs")
+
+	name, err := v.ResolveIdentifier("adrs")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "adrs" {
+		t.Errorf("expected %q, got %q", "adrs", name)
+	}
+}
+
+func TestResolveIdentifier_ByHashPrefix(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "adrs.md")
+	testutil.WriteFile(t, filePath, "")
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "adrs")
+
+	hash := vault.HashEntry("adrs")
+	name, err := v.ResolveIdentifier(hash[:4])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "adrs" {
+		t.Errorf("expected %q, got %q", "adrs", name)
+	}
+}
+
+func TestResolveIdentifier_NotFound(t *testing.T) {
+	dir := testutil.TempDir(t)
+	v, _ := vault.Init(dir)
+
+	_, err := v.ResolveIdentifier("zzzzzzz")
+	if !errors.Is(err, vault.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestResolveIdentifier_NameTakesPrecedence(t *testing.T) {
+	dir := testutil.TempDir(t)
+	// Create an entry whose name happens to look like a hash prefix of another.
+	// Use two files: "alpha" and an entry named after alpha's hash prefix.
+	filePath1 := filepath.Join(dir, "alpha.md")
+	testutil.WriteFile(t, filePath1, "")
+	hashPrefix := vault.HashEntry("alpha")[:4]
+	filePath2 := filepath.Join(dir, hashPrefix+".md")
+	testutil.WriteFile(t, filePath2, "")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath1, "alpha")
+	_ = v.AddFile(filePath2, hashPrefix)
+
+	// Resolving by the hash prefix as a name should find the entry named hashPrefix exactly.
+	name, err := v.ResolveIdentifier(hashPrefix)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != hashPrefix {
+		t.Errorf("expected exact name match %q, got %q", hashPrefix, name)
+	}
+}
+
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

@@ -44,7 +44,37 @@ var (
 	ErrAlreadyExists  = errors.New(".pickaxe.json already exists")
 	ErrNameCollision  = errors.New("name already in use")
 	ErrNotFound       = errors.New("no entry with that name")
+	ErrAmbiguousHash  = errors.New("ambiguous hash prefix")
 )
+
+// ResolveIdentifier returns the entry name matching id by exact name first,
+// then by hash prefix. Returns ErrAmbiguousHash or ErrNotFound on failure.
+func (v *Vault) ResolveIdentifier(id string) (string, error) {
+	for _, e := range v.cfg.Entries {
+		if e.Name == id {
+			return e.Name, nil
+		}
+	}
+	return ResolveHash(v.cfg.Entries, id)
+}
+
+// ResolveHash finds the entry whose hash starts with prefix without building a full HashTable.
+func ResolveHash(entries []Entry, prefix string) (string, error) {
+	prefix = strings.ToLower(prefix)
+	var match string
+	for _, e := range entries {
+		if strings.HasPrefix(HashEntry(e.Name), prefix) {
+			if match != "" {
+				return "", ErrAmbiguousHash
+			}
+			match = e.Name
+		}
+	}
+	if match == "" {
+		return "", ErrNotFound
+	}
+	return match, nil
+}
 
 type projectConfig struct {
 	Version          int     `json:"version"`

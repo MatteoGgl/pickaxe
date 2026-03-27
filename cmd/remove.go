@@ -9,11 +9,11 @@ import (
 )
 
 var removeCmd = &cobra.Command{
-	Use:   "remove <name>",
-	Short: "Remove a registered vault entry by name",
+	Use:   "remove <name|hash>",
+	Short: "Remove a registered vault entry by name or hash prefix",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
+		id := args[0]
 
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -25,7 +25,12 @@ var removeCmd = &cobra.Command{
 			return fmt.Errorf("no .pickaxe.json found; run 'pickaxe init' first")
 		}
 
-		if err := v.Remove(name); err != nil {
+		resolved, err := v.ResolveIdentifier(id)
+		if err != nil {
+			return err
+		}
+
+		if err := v.Remove(resolved); err != nil {
 			return err
 		}
 
@@ -33,7 +38,7 @@ var removeCmd = &cobra.Command{
 			return fmt.Errorf("write .pickaxe.json: %w", err)
 		}
 
-		fmt.Printf("removed: %s\n", name)
+		fmt.Printf("removed: %s\n", resolved)
 		return nil
 	},
 }
