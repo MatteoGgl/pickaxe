@@ -42,6 +42,7 @@ type Model struct {
 	filter      textinput.Model
 	filterMode  bool
 	preSelected map[string]bool
+	selected    map[string]bool
 	done        bool
 	result      PickerResult
 }
@@ -61,11 +62,17 @@ func NewPicker(root string, preSelected map[string]bool) *Model {
 	ti.Placeholder = "filter..."
 	ti.CharLimit = 60
 
+	selected := make(map[string]bool, len(preSelected))
+	for k, v := range preSelected {
+		selected[k] = v
+	}
+
 	m := &Model{
 		root:        root,
 		cwd:         root,
 		filter:      ti,
 		preSelected: preSelected,
+		selected:    selected,
 		height:      24, // sensible default until WindowSizeMsg arrives
 	}
 	m.loadItems()
@@ -93,7 +100,7 @@ func (m *Model) loadItems() {
 			path:    fullPath,
 			name:    e.Name(),
 			isDir:   e.IsDir(),
-			checked: m.preSelected[fullPath],
+			checked: m.selected[fullPath],
 		}
 		items = append(items, item)
 	}
@@ -194,6 +201,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				idx := m.itemIndex(visible[m.cursor])
 				if idx >= 0 {
 					m.items[idx].checked = !m.items[idx].checked
+					path := m.items[idx].path
+					if m.items[idx].checked {
+						m.selected[path] = true
+					} else {
+						delete(m.selected, path)
+					}
 				}
 			}
 
@@ -211,11 +224,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "ctrl+d":
+			paths := make([]string, 0, len(m.selected))
+			for p := range m.selected {
+				paths = append(paths, p)
+			}
+			sort.Strings(paths)
 			var sels []Selection
-			for _, item := range m.items {
-				if item.checked {
-					sels = append(sels, Selection{Path: item.path, IsDir: item.isDir})
-				}
+			for _, p := range paths {
+				info, err := os.Stat(p)
+				isDir := err == nil && info.IsDir()
+				sels = append(sels, Selection{Path: p, IsDir: isDir})
 			}
 			m.done = true
 			m.result = PickerResult{Confirmed: true, Selections: sels}
