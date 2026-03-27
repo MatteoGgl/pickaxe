@@ -61,9 +61,23 @@ Changes to `.pickaxe.json` are picked up immediately — no server restart neede
 | `config set vault <path>` | Set Obsidian vault root |
 | `init` | Create `.pickaxe.json` in current dir |
 | `add [path]` | Register files (TUI if no path) |
-| `remove <name>` | Unregister an entry |
-| `list` | Show registered entries |
+| `remove <name\|hash>` | Unregister an entry by name or hash prefix |
+| `list` | Show registered entries with hash IDs |
 | `serve` | Start MCP server (stdio) |
+
+## Hash IDs
+
+Each entry gets a deterministic 8-character hex ID derived from its name. `list` displays them with the shortest unique prefix highlighted:
+
+```
+  3a7f[c291] [file] my-notes ~/vault/my-notes.md ✓
+```
+
+`remove` accepts a hash prefix instead of a full name — any unambiguous prefix works:
+
+```sh
+pickaxe remove 3a7f
+```
 
 ## Privacy
 
