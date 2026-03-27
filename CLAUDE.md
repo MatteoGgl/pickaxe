@@ -51,7 +51,9 @@ Single Go binary, two modes:
 
 **MCP SDK:** Uses `github.com/modelcontextprotocol/go-sdk` (the official SDK), not `mark3labs/mcp-go`. Tool handlers use typed param structs (`ListVaultFilesParams`, `ReadVaultFileParams`). Integration tests use `sdkmcp.CommandTransport` to spin up the binary as a subprocess.
 
-**TUI picker** (`internal/tui/picker.go`) uses bubbletea with `tea.WithAltScreen()` and viewport scrolling. Key bindings: space=toggle, enter=navigate into dir, ctrl+d=confirm, /=filter, q=cancel.
+**TUI picker** (`internal/tui/picker.go`) uses bubbletea with `tea.WithAltScreen()` and viewport scrolling. Key bindings: space=toggle, enter=navigate into dir, ctrl+d=confirm, /=filter, q=cancel. Dirs show tri-state: `[x]` all files selected, `[~]` partial, `[ ]` none — space on a dir toggles all `.md` files recursively. `ctrl+d` emits only file paths (never dirs).
+
+**vault vs tui walk logic:** `internal/vault` enumerates with `Entry`→`ResolvedFile` (names, mod-times). `internal/tui` has its own `collectMdFiles` returning raw paths. They are intentionally separate — don't merge them.
 
 ## Package layout
 

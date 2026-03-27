@@ -33,6 +33,8 @@ pickaxe add path/to/dir      # register a directory
 
 TUI key bindings: `space`=toggle, `enter`=navigate into dir, `ctrl+d`=confirm, `/`=filter, `q`=cancel.
 
+Directories show a tri-state checkbox: `[x]` all files selected, `[~]` some files selected, `[ ]` none. Toggling a dir selects or deselects all `.md` files inside recursively. A partial dir (`[~]`) toggles to fully selected.
+
 Flags: `--as <name>` to set a custom name, `--recursive` to include nested directories.
 
 Directory entries expand to all `.md` files inside. Child names are prefixed as `dir-name/file-name`.
