@@ -37,7 +37,7 @@ func MakeListVaultFilesHandler(cfg *config.ProjectConfig) func(context.Context, 
 			}, nil, nil
 		}
 
-		var infos []vaultFileInfo
+		infos := make([]vaultFileInfo, 0, len(cfg.Entries))
 		for _, entry := range cfg.Entries {
 			files, err := registry.EnumerateFiles(entry)
 			if err != nil {
