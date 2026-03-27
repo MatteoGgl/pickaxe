@@ -56,6 +56,7 @@ Single Go binary, two modes:
 | `internal/config` | Read/write global config and `.pickaxe.json` |
 | `internal/registry` | Business logic: add/remove/enumerate, name collision detection |
 | `internal/mcp` | MCP server, tool handlers, integration tests |
+| `internal/frontmatter` | Strip YAML frontmatter from markdown content |
 | `internal/tui` | Bubbletea multi-select file picker |
 | `internal/testutil` | Shared test helpers (temp dirs, file writes) |
 | `cmd/` | Cobra CLI commands |

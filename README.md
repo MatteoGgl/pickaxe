@@ -65,6 +65,12 @@ Changes to `.pickaxe.json` are picked up immediately — no server restart neede
 | `list` | Show registered entries |
 | `serve` | Start MCP server (stdio) |
 
+## Privacy
+
+YAML frontmatter is stripped from `.md` files before sending content to Claude. Tags, properties, and other metadata stay in your vault. Only the note body is shared.
+
+To opt out, add `"strip_frontmatter": false` to `.pickaxe.json`.
+
 ## How it works
 
 `.pickaxe.json` stores registered entries (files and dirs). `pickaxe serve` runs an MCP stdio server exposing `list_vault_files` and `read_vault_file`. The registry is re-read on every tool call, so `pickaxe add` changes are visible immediately without restarting the server.
