@@ -1,0 +1,29 @@
+version: 2
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/matteoggl/pickaxe/cmd.version={{.Version}}
+
+archives:
+  - format: tar.gz
+
+homebrew_casks:
+  - name: pickaxe
+    binaries:
+      - pickaxe
+    homepage: "https://github.com/matteoggl/pickaxe"
+    description: "Register Obsidian vault files as MCP context for Claude Code"
+    repository:
+      owner: matteoggl
+      name: homebrew-pickaxe
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    commit_msg_template: "Update pickaxe to {{ .Tag }}"
