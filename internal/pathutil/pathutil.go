@@ -6,6 +6,22 @@ import (
 	"path/filepath"
 )
 
+// AtomicWrite writes data to path using write-to-temp + rename.
+// Cleans up any prior crash orphan at the temp path.
+func AtomicWrite(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	os.Remove(tmp)
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 // ExpandHome replaces a leading ~/ with the user's home directory.
 func ExpandHome(raw string) (string, error) {
 	if len(raw) >= 2 && raw[:2] == "~/" {

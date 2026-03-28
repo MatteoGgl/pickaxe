@@ -111,9 +111,12 @@ var pickCmd = &cobra.Command{
 	Short: "Interactively add or remove vault entries",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		globalCfgPath := config.DefaultGlobalConfigPath()
-		globalCfg, err := config.ReadGlobalConfig(globalCfgPath)
+		globalCfgPath, err := config.DefaultGlobalConfigPath()
 		if err != nil {
+			return err
+		}
+		globalCfg, err := config.ReadGlobalConfig(globalCfgPath)
+		if err != nil || globalCfg.VaultRoot == "" {
 			return fmt.Errorf("vault root not configured; run 'pickaxe config set vault <path>' first")
 		}
 		cwd, err := os.Getwd()

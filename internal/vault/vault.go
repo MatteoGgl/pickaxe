@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/matteoggl/pickaxe/internal/frontmatter"
+	"github.com/matteoggl/pickaxe/internal/pathutil"
 )
 
 // EntryType distinguishes file vs directory entries.
@@ -106,6 +107,9 @@ func Open(dir string) (*Vault, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", ConfigFilename, err)
 	}
+	if cfg.Version > 1 {
+		return nil, fmt.Errorf("%s was created by a newer version of pickaxe (schema v%d); please upgrade", ConfigFilename, cfg.Version)
+	}
 	return &Vault{path: p, cfg: &cfg}, nil
 }
 
@@ -129,16 +133,13 @@ func (v *Vault) Entries() []Entry {
 	return result
 }
 
-// Save persists the current state to disk.
+// Save persists the current state to disk atomically (write-to-temp + rename).
 func (v *Vault) Save() error {
-	if err := os.MkdirAll(filepath.Dir(v.path), 0o755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(v.cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(v.path, data, 0o644)
+	return pathutil.AtomicWrite(v.path, data, 0o644)
 }
 
 func (v *Vault) hasName(name string) bool {

@@ -29,7 +29,10 @@ var configSetCmd = &cobra.Command{
 			return err
 		}
 
-		path := config.DefaultGlobalConfigPath()
+		path, err := config.DefaultGlobalConfigPath()
+		if err != nil {
+			return err
+		}
 		cfg, err := config.ReadGlobalConfig(path)
 		if err != nil {
 			cfg = &config.GlobalConfig{}

@@ -2,8 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/matteoggl/pickaxe/internal/pathutil"
 )
 
 // GlobalConfig is stored at ~/.config/pickaxe/config.json.
@@ -12,9 +15,12 @@ type GlobalConfig struct {
 }
 
 // DefaultGlobalConfigPath returns the default path for the global config.
-func DefaultGlobalConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "pickaxe", "config.json")
+func DefaultGlobalConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("could not determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", "pickaxe", "config.json"), nil
 }
 
 // ReadGlobalConfig reads and parses the global config from path.
@@ -30,14 +36,11 @@ func ReadGlobalConfig(path string) (*GlobalConfig, error) {
 	return &cfg, nil
 }
 
-// WriteGlobalConfig serializes cfg to path, creating parent directories as needed.
+// WriteGlobalConfig serializes cfg to path atomically.
 func WriteGlobalConfig(path string, cfg *GlobalConfig) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return pathutil.AtomicWrite(path, data, 0o644)
 }
