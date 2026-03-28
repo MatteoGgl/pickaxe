@@ -14,7 +14,8 @@ import (
 var serveCmd = &cobra.Command{
 	Use:     "serve",
 	Aliases: []string{"s"},
-	Short: "Start the MCP server (used by Claude Code)",
+	Short:   "Start the MCP server (used by Claude Code)",
+	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -22,7 +23,7 @@ var serveCmd = &cobra.Command{
 		}
 		s := internalmcp.NewServer(cwd)
 		if err := s.Run(context.Background(), &sdkmcp.StdioTransport{}); err != nil && err != io.EOF {
-			fmt.Fprintf(os.Stderr, "pickaxe serve: %v\n", err)
+			return fmt.Errorf("pickaxe serve: %w", err)
 		}
 		return nil
 	},

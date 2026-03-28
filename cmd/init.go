@@ -13,7 +13,8 @@ import (
 var initCmd = &cobra.Command{
 	Use:     "init",
 	Aliases: []string{"i"},
-	Short: "Create a .pickaxe.json registry in the current directory",
+	Short:   "Create a .pickaxe.json registry in the current directory",
+	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
