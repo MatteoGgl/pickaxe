@@ -38,6 +38,7 @@ type Model struct {
 	root        string
 	cwd         string
 	items       []fileItem
+	loadErr     error // set when os.ReadDir fails
 	cursor      int
 	offset      int // first visible item index (for scrolling)
 	height      int // terminal height
@@ -109,8 +110,10 @@ func (m *Model) loadItems() {
 	entries, err := os.ReadDir(m.cwd)
 	if err != nil {
 		m.items = nil
+		m.loadErr = err
 		return
 	}
+	m.loadErr = nil
 
 	var items []fileItem
 	if m.cwd != m.root {
@@ -352,6 +355,16 @@ func (m *Model) View() string {
 
 	if m.filterMode {
 		sb.WriteString("  Filter: " + filterStyle.Render(m.filter.View()) + "\n\n")
+	}
+
+	if m.loadErr != nil {
+		sb.WriteString("  error: " + m.loadErr.Error() + "\n")
+		return sb.String()
+	}
+
+	if len(visible) == 0 && !m.filterMode {
+		sb.WriteString(dimStyle.Render("  (no .md files found)") + "\n")
+		return sb.String()
 	}
 
 	end := m.offset + lh
