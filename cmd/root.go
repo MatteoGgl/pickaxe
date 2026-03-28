@@ -10,6 +10,13 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "pickaxe",
 	Short: "Expose Obsidian vault files to Claude Code via MCP",
+	Long: `   ░▒▒▓▓██████████████████▓▓▒▒░
+  ░▒▓█▀                    ░▀█▓░
+  ▒▓█     P I C K A X E  ⛏   █▓▒
+  ░▒▓█▄░  ·  .,░ ▒░ ▓▒░▓█▒▄█▓▒░
+   ░▒▓▓██████████████████▓▓▒▒░
+
+Expose Obsidian vault files to Claude Code via MCP.`,
 }
 
 func Execute() {
