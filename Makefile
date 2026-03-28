@@ -4,7 +4,15 @@ help:
 	@echo 'Usage:'
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'
 
-## run: run the cmd/web application
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS = -X github.com/matteoggl/pickaxe/cmd.version=$(VERSION)
+
+## build: build binary to dist/pickaxe
+.PHONY: build
+build:
+	@go build -ldflags "$(LDFLAGS)" -o dist/pickaxe .
+
+## run: run the application
 .PHONY: run
 run:
 	@go run ./

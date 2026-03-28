@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:   "pickaxe",
 	Short: "Expose Obsidian vault files to Claude Code via MCP",
@@ -17,6 +19,10 @@ var rootCmd = &cobra.Command{
    ░▒▓▓██████████████████▓▓▒▒░
 
 Expose Obsidian vault files to Claude Code via MCP.`,
+}
+
+func init() {
+	rootCmd.Version = version
 }
 
 func Execute() {
