@@ -26,7 +26,7 @@ pickaxe init
 ## Adding files
 
 ```sh
-pickaxe add                  # open TUI picker
+pickaxe pick                 # open TUI picker
 pickaxe add path/to/file.md  # register directly
 pickaxe add path/to/dir      # register a directory
 ```
@@ -62,7 +62,7 @@ Changes to `.pickaxe.json` are picked up immediately — no server restart neede
 |---------|---------|-------------|
 | `config set vault <path>` | `c` | Set Obsidian vault root |
 | `init` | `i` | Create `.pickaxe.json` in current dir |
-| `add [path]` | `a` | Register files (TUI if no path) |
+| `add <path>` | `a` | Register a file or directory directly |
 | `remove <name\|hash>` | `rm`, `r` | Unregister an entry by name or hash prefix |
 | `list` | `ls`, `l` | Show registered entries with hash IDs |
 | `serve` | `s` | Start MCP server (stdio) |
