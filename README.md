@@ -5,6 +5,12 @@ Expose Obsidian vault files to Claude Code via MCP.
 ## Install
 
 ```sh
+brew install matteoggl/pickaxe/pickaxe
+```
+
+Or with Go:
+
+```sh
 go install github.com/matteoggl/pickaxe@latest
 ```
 
