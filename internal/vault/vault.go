@@ -27,6 +27,7 @@ type Entry struct {
 	Path      string    `json:"path"`
 	Name      string    `json:"name"`
 	Recursive bool      `json:"recursive,omitempty"`
+	Writable  bool      `json:"writable,omitempty"`
 }
 
 // ResolvedFile is a concrete file path with its display name and availability info.
@@ -35,6 +36,7 @@ type ResolvedFile struct {
 	Path        string
 	LastMod     time.Time
 	Unavailable bool
+	Writable    bool
 }
 
 // ConfigFilename is the name of the per-project config file.
@@ -46,6 +48,7 @@ var (
 	ErrNameCollision  = errors.New("name already in use")
 	ErrNotFound       = errors.New("no entry with that name")
 	ErrAmbiguousHash  = errors.New("ambiguous hash prefix")
+	ErrReadOnly       = errors.New("file is read-only")
 )
 
 // ResolveIdentifier returns the entry name matching id by exact name first,
@@ -152,7 +155,7 @@ func (v *Vault) hasName(name string) bool {
 }
 
 // AddFile registers a single file. name may be empty (defaults to filename sans ext).
-func (v *Vault) AddFile(path, name string) error {
+func (v *Vault) AddFile(path, name string, writable bool) error {
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("path %q not found: %w", path, err)
 	}
@@ -163,15 +166,16 @@ func (v *Vault) AddFile(path, name string) error {
 		return fmt.Errorf("%w: %q; use --as to pick a different name", ErrNameCollision, name)
 	}
 	v.cfg.Entries = append(v.cfg.Entries, Entry{
-		Type: EntryTypeFile,
-		Path: path,
-		Name: name,
+		Type:     EntryTypeFile,
+		Path:     path,
+		Name:     name,
+		Writable: writable,
 	})
 	return nil
 }
 
 // AddDir registers a directory. name may be empty (defaults to dir base name).
-func (v *Vault) AddDir(path, name string, recursive bool) error {
+func (v *Vault) AddDir(path, name string, recursive, writable bool) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("path %q not found: %w", path, err)
@@ -190,8 +194,20 @@ func (v *Vault) AddDir(path, name string, recursive bool) error {
 		Path:      path,
 		Name:      name,
 		Recursive: recursive,
+		Writable:  writable,
 	})
 	return nil
+}
+
+// SetWritable sets the writable flag on the named entry. Idempotent.
+func (v *Vault) SetWritable(name string, writable bool) error {
+	for i, e := range v.cfg.Entries {
+		if e.Name == name {
+			v.cfg.Entries[i].Writable = writable
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %q", ErrNotFound, name)
 }
 
 // Remove removes the entry with the given name.
@@ -232,7 +248,7 @@ func DefaultName(path string) string {
 // enumerateFiles expands a single entry into concrete resolved files.
 func enumerateFiles(entry Entry) ([]ResolvedFile, error) {
 	if entry.Type == EntryTypeFile {
-		rf := ResolvedFile{Name: entry.Name, Path: entry.Path}
+		rf := ResolvedFile{Name: entry.Name, Path: entry.Path, Writable: entry.Writable}
 		info, err := os.Stat(entry.Path)
 		if err != nil {
 			rf.Unavailable = true
@@ -259,9 +275,10 @@ func enumerateFiles(entry Entry) ([]ResolvedFile, error) {
 		rel, _ := filepath.Rel(entry.Path, path)
 		name := entry.Name + "/" + strings.TrimSuffix(rel, ".md")
 		files = append(files, ResolvedFile{
-			Name:    name,
-			Path:    path,
-			LastMod: info.ModTime(),
+			Name:     name,
+			Path:     path,
+			LastMod:  info.ModTime(),
+			Writable: entry.Writable,
 		})
 		return nil
 	}
@@ -289,13 +306,8 @@ func ListFiles(dir string) ([]ResolvedFile, error) {
 	return all, nil
 }
 
-// ReadFile opens the vault at dir and returns the content of the named file.
-// Uses an O(1) map lookup after a single enumeration pass.
-func ReadFile(dir string, name string) (string, error) {
-	v, err := Open(dir)
-	if err != nil {
-		return "", err
-	}
+// resolveFile builds a name→ResolvedFile index from the vault and looks up name.
+func resolveFile(v *Vault, name string) (ResolvedFile, error) {
 	index := make(map[string]ResolvedFile)
 	for _, entry := range v.cfg.Entries {
 		files, err := enumerateFiles(entry)
@@ -308,7 +320,38 @@ func ReadFile(dir string, name string) (string, error) {
 	}
 	f, ok := index[name]
 	if !ok {
-		return "", fmt.Errorf("%w: %q", ErrNotFound, name)
+		return ResolvedFile{}, fmt.Errorf("%w: %q", ErrNotFound, name)
+	}
+	return f, nil
+}
+
+// WriteFile opens the vault at dir, checks that the named file is writable,
+// and overwrites its content atomically.
+func WriteFile(dir, name, content string) error {
+	v, err := Open(dir)
+	if err != nil {
+		return err
+	}
+	f, err := resolveFile(v, name)
+	if err != nil {
+		return err
+	}
+	if !f.Writable {
+		return fmt.Errorf("%w: %q", ErrReadOnly, name)
+	}
+	return pathutil.AtomicWrite(f.Path, []byte(content), 0o644)
+}
+
+// ReadFile opens the vault at dir and returns the content of the named file.
+// Uses an O(1) map lookup after a single enumeration pass.
+func ReadFile(dir string, name string) (string, error) {
+	v, err := Open(dir)
+	if err != nil {
+		return "", err
+	}
+	f, err := resolveFile(v, name)
+	if err != nil {
+		return "", err
 	}
 	if f.Unavailable {
 		return "", fmt.Errorf("file %q is currently unavailable", name)

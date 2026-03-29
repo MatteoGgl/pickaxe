@@ -7,11 +7,12 @@ import (
 	"strings"
 )
 
-// Compact takes a set of selected file paths and returns the most compact
-// []Entry representation. For each directory, if ALL .md files are selected,
-// collapse to a dir entry. If all subdirs are also fully selected, upgrade
-// to recursive. Otherwise, individual file entries.
-func Compact(selectedPaths []string) ([]Entry, error) {
+// Compact takes a set of selected file paths and an optional writablePaths map,
+// and returns the most compact []Entry representation. For each directory, if ALL
+// .md files are selected, collapse to a dir entry. If all subdirs are also fully
+// selected, upgrade to recursive. Mixed writability within a directory prevents
+// dir collapse — individual file entries are emitted instead.
+func Compact(selectedPaths []string, writablePaths map[string]bool) ([]Entry, error) {
 	if len(selectedPaths) == 0 {
 		return []Entry{}, nil
 	}
@@ -67,9 +68,10 @@ func Compact(selectedPaths []string) ([]Entry, error) {
 			for _, p := range byDir[dir] {
 				if !covered[p] {
 					entries = append(entries, Entry{
-						Type: EntryTypeFile,
-						Path: p,
-						Name: DefaultName(p),
+						Type:     EntryTypeFile,
+						Path:     p,
+						Name:     DefaultName(p),
+						Writable: writablePaths[p],
 					})
 				}
 			}
@@ -82,16 +84,29 @@ func Compact(selectedPaths []string) ([]Entry, error) {
 		}
 		hasSubdirs := len(subdirs) > 0
 
+		// Check if all selected files in this dir have consistent writable state.
+		// Mixed writability prevents dir collapse.
+		dirWritable := writablePaths[byDir[dir][0]]
+		mixedWritable := false
+		for _, p := range byDir[dir] {
+			if writablePaths[p] != dirWritable {
+				mixedWritable = true
+				break
+			}
+		}
+
 		// Collapse to dir entry only when there's genuine compaction benefit:
 		// either multiple .md files or subdirectories involved.
-		if len(allMd) == 0 || !allSelected(allMd, selected) || (len(allMd) == 1 && !hasSubdirs) {
-			// Partial selection or single-file dir: emit individual file entries
+		// Mixed writability also prevents collapse.
+		if len(allMd) == 0 || !allSelected(allMd, selected) || (len(allMd) == 1 && !hasSubdirs) || mixedWritable {
+			// Partial selection, single-file dir, or mixed writability: emit individual file entries
 			for _, p := range byDir[dir] {
 				if !covered[p] {
 					entries = append(entries, Entry{
-						Type: EntryTypeFile,
-						Path: p,
-						Name: DefaultName(p),
+						Type:     EntryTypeFile,
+						Path:     p,
+						Name:     DefaultName(p),
+						Writable: writablePaths[p],
 					})
 				}
 			}
@@ -108,11 +123,37 @@ func Compact(selectedPaths []string) ([]Entry, error) {
 			}
 		}
 
+		// When recursive, verify all descendant selected files share the same writability.
+		if fullyRecursive {
+			for path := range selected {
+				if isUnder(path, dir) && path != dir {
+					if writablePaths[path] != dirWritable {
+						mixedWritable = true
+						break
+					}
+				}
+			}
+			if mixedWritable {
+				for _, p := range byDir[dir] {
+					if !covered[p] {
+						entries = append(entries, Entry{
+							Type:     EntryTypeFile,
+							Path:     p,
+							Name:     DefaultName(p),
+							Writable: writablePaths[p],
+						})
+					}
+				}
+				continue
+			}
+		}
+
 		entries = append(entries, Entry{
 			Type:      EntryTypeDir,
 			Path:      dir,
 			Name:      DefaultName(dir),
 			Recursive: fullyRecursive,
+			Writable:  dirWritable,
 		})
 
 		if fullyRecursive {

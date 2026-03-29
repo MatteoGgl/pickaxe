@@ -61,7 +61,7 @@ func TestInit_Open_RoundTrip(t *testing.T) {
 	}
 	filePath := filepath.Join(dir, "note.md")
 	testutil.WriteFile(t, filePath, "hello")
-	if err := v.AddFile(filePath, "note"); err != nil {
+	if err := v.AddFile(filePath, "note", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Save(); err != nil {
@@ -102,7 +102,7 @@ func TestAddFile_Success(t *testing.T) {
 	testutil.WriteFile(t, filePath, "# ADRs")
 
 	v, _ := vault.Init(dir)
-	if err := v.AddFile(filePath, ""); err != nil {
+	if err := v.AddFile(filePath, "", false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	entries := v.Entries()
@@ -123,7 +123,7 @@ func TestAddFile_CustomName(t *testing.T) {
 	testutil.WriteFile(t, filePath, "# ADRs")
 
 	v, _ := vault.Init(dir)
-	if err := v.AddFile(filePath, "my-adrs"); err != nil {
+	if err := v.AddFile(filePath, "my-adrs", false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if v.Entries()[0].Name != "my-adrs" {
@@ -134,7 +134,7 @@ func TestAddFile_CustomName(t *testing.T) {
 func TestAddFile_NonExistentPath(t *testing.T) {
 	dir := testutil.TempDir(t)
 	v, _ := vault.Init(dir)
-	if err := v.AddFile("/nonexistent/file.md", ""); err == nil {
+	if err := v.AddFile("/nonexistent/file.md", "", false); err == nil {
 		t.Fatal("expected error for non-existent path, got nil")
 	}
 }
@@ -145,10 +145,10 @@ func TestAddFile_NameCollision(t *testing.T) {
 	testutil.WriteFile(t, filePath, "")
 
 	v, _ := vault.Init(dir)
-	if err := v.AddFile(filePath, ""); err != nil {
+	if err := v.AddFile(filePath, "", false); err != nil {
 		t.Fatal(err)
 	}
-	err := v.AddFile(filePath, "")
+	err := v.AddFile(filePath, "", false)
 	if !errors.Is(err, vault.ErrNameCollision) {
 		t.Errorf("expected ErrNameCollision, got %v", err)
 	}
@@ -162,12 +162,190 @@ func TestAddFile_NameCollision_AcrossTypes(t *testing.T) {
 	testutil.WriteFile(t, filePath, "")
 
 	v, _ := vault.Init(dir)
-	if err := v.AddDir(subDir, "notes", false); err != nil {
+	if err := v.AddDir(subDir, "notes", false, false); err != nil {
 		t.Fatal(err)
 	}
-	err := v.AddFile(filePath, "notes")
+	err := v.AddFile(filePath, "notes", false)
 	if !errors.Is(err, vault.ErrNameCollision) {
 		t.Errorf("expected ErrNameCollision across types, got %v", err)
+	}
+}
+
+func TestAddFile_Writable(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	v, _ := vault.Init(dir)
+	if err := v.AddFile(filePath, "note", true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	entries := v.Entries()
+	if !entries[0].Writable {
+		t.Error("expected Writable=true")
+	}
+}
+
+func TestAddDir_Writable(t *testing.T) {
+	dir := testutil.TempDir(t)
+	subDir := filepath.Join(dir, "notes")
+	testutil.WriteFile(t, filepath.Join(subDir, "a.md"), "")
+
+	v, _ := vault.Init(dir)
+	if err := v.AddDir(subDir, "notes", false, true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	entries := v.Entries()
+	if !entries[0].Writable {
+		t.Error("expected Writable=true")
+	}
+}
+
+func TestEnumerateFiles_PropagatesWritable_File(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	files, err := vault.ListFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || !files[0].Writable {
+		t.Errorf("expected Writable=true, got %+v", files)
+	}
+}
+
+func TestEnumerateFiles_PropagatesWritable_Dir(t *testing.T) {
+	dir := testutil.TempDir(t)
+	subDir := filepath.Join(dir, "notes")
+	testutil.WriteFile(t, filepath.Join(subDir, "a.md"), "")
+	testutil.WriteFile(t, filepath.Join(subDir, "b.md"), "")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddDir(subDir, "notes", false, true)
+	_ = v.Save()
+
+	files, err := vault.ListFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(files))
+	}
+	for _, f := range files {
+		if !f.Writable {
+			t.Errorf("expected Writable=true for %q, got false", f.Name)
+		}
+	}
+}
+
+func TestSetWritable_Success(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", false)
+
+	if err := v.SetWritable("note", true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !v.Entries()[0].Writable {
+		t.Error("expected Writable=true after SetWritable")
+	}
+}
+
+func TestSetWritable_NotFound(t *testing.T) {
+	dir := testutil.TempDir(t)
+	v, _ := vault.Init(dir)
+
+	err := v.SetWritable("nonexistent", true)
+	if !errors.Is(err, vault.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestSetWritable_Idempotent(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+
+	// Setting writable=true when already true should not error
+	if err := v.SetWritable("note", true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !v.Entries()[0].Writable {
+		t.Error("expected Writable=true")
+	}
+}
+
+func TestWriteFile_Success(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "original")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	if err := vault.WriteFile(dir, "note", "updated content"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, _ := vault.ReadFile(dir, "note")
+	if content != "updated content" {
+		t.Errorf("expected updated content, got %q", content)
+	}
+}
+
+func TestWriteFile_ReadOnly(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "original")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", false)
+	_ = v.Save()
+
+	err := vault.WriteFile(dir, "note", "updated content")
+	if !errors.Is(err, vault.ErrReadOnly) {
+		t.Errorf("expected ErrReadOnly, got %v", err)
+	}
+}
+
+func TestWriteFile_NotFound(t *testing.T) {
+	dir := testutil.TempDir(t)
+	v, _ := vault.Init(dir)
+	_ = v.Save()
+
+	err := vault.WriteFile(dir, "nonexistent", "content")
+	if !errors.Is(err, vault.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestRoundTrip_WritableField(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	v2, err := vault.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v2.Entries()[0].Writable {
+		t.Error("Writable field not persisted after save/open")
 	}
 }
 
@@ -182,7 +360,7 @@ func TestAddDir_Flat(t *testing.T) {
 	v, _ := vault.Init(dir)
 	subDir := filepath.Join(dir, "docs")
 	testutil.WriteFile(t, filepath.Join(subDir, "x.md"), "")
-	if err := v.AddDir(subDir, "", false); err != nil {
+	if err := v.AddDir(subDir, "", false, false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if v.Entries()[0].Type != vault.EntryTypeDir {
@@ -200,7 +378,7 @@ func TestAddDir_Recursive(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(subDir, "sub", "b.md"), "")
 
 	v, _ := vault.Init(dir)
-	if err := v.AddDir(subDir, "", true); err != nil {
+	if err := v.AddDir(subDir, "", true, false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !v.Entries()[0].Recursive {
@@ -211,7 +389,7 @@ func TestAddDir_Recursive(t *testing.T) {
 func TestAddDir_NonExistentPath(t *testing.T) {
 	dir := testutil.TempDir(t)
 	v, _ := vault.Init(dir)
-	if err := v.AddDir("/nonexistent/", "", false); err == nil {
+	if err := v.AddDir("/nonexistent/", "", false, false); err == nil {
 		t.Fatal("expected error for non-existent path, got nil")
 	}
 }
@@ -224,7 +402,7 @@ func TestRemove_Success(t *testing.T) {
 	testutil.WriteFile(t, filePath, "")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath, "")
+	_ = v.AddFile(filePath, "", false)
 	if err := v.Remove("adrs"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -250,7 +428,7 @@ func TestRemoveByPath_Success(t *testing.T) {
 	testutil.WriteFile(t, filePath, "")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath, "")
+	_ = v.AddFile(filePath, "", false)
 	if err := v.RemoveByPath(filePath); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -278,8 +456,8 @@ func TestReplaceEntries_ReplacesAll(t *testing.T) {
 	testutil.WriteFile(t, filePath2, "")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath1, "file1")
-	_ = v.AddFile(filePath2, "file2")
+	_ = v.AddFile(filePath1, "file1", false)
+	_ = v.AddFile(filePath2, "file2", false)
 
 	newEntries := []vault.Entry{
 		{Type: vault.EntryTypeFile, Path: filePath1, Name: "file1"},
@@ -300,7 +478,7 @@ func TestReplaceEntries_Empty(t *testing.T) {
 	testutil.WriteFile(t, filePath, "")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath, "file")
+	_ = v.AddFile(filePath, "file", false)
 
 	v.ReplaceEntries([]vault.Entry{})
 
@@ -320,7 +498,7 @@ func TestListFiles_Flat(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(docsDir, "notes.txt"), "")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddDir(docsDir, "myfolder", false)
+	_ = v.AddDir(docsDir, "myfolder", false, false)
 	_ = v.Save()
 
 	files, err := vault.ListFiles(dir)
@@ -344,7 +522,7 @@ func TestListFiles_Recursive(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(docsDir, "sub", "b.md"), "")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddDir(docsDir, "myfolder", true)
+	_ = v.AddDir(docsDir, "myfolder", true, false)
 	_ = v.Save()
 
 	files, err := vault.ListFiles(dir)
@@ -362,7 +540,7 @@ func TestReadFile_Found(t *testing.T) {
 	testutil.WriteFile(t, filePath, "hello world")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath, "note")
+	_ = v.AddFile(filePath, "note", false)
 	_ = v.Save()
 
 	content, err := vault.ReadFile(dir, "note")
@@ -414,7 +592,7 @@ func TestReadFile_StripsFrontmatter(t *testing.T) {
 	testutil.WriteFile(t, filePath, "---\ntitle: secret\ntags: [a, b]\n---\n\n# Hello")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath, "note")
+	_ = v.AddFile(filePath, "note", false)
 	_ = v.Save()
 
 	content, err := vault.ReadFile(dir, "note")
@@ -451,7 +629,7 @@ func TestResolveIdentifier_ByName(t *testing.T) {
 	filePath := filepath.Join(dir, "adrs.md")
 	testutil.WriteFile(t, filePath, "")
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath, "adrs")
+	_ = v.AddFile(filePath, "adrs", false)
 
 	name, err := v.ResolveIdentifier("adrs")
 	if err != nil {
@@ -467,7 +645,7 @@ func TestResolveIdentifier_ByHashPrefix(t *testing.T) {
 	filePath := filepath.Join(dir, "adrs.md")
 	testutil.WriteFile(t, filePath, "")
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath, "adrs")
+	_ = v.AddFile(filePath, "adrs", false)
 
 	hash := vault.HashEntry("adrs")
 	name, err := v.ResolveIdentifier(hash[:4])
@@ -500,8 +678,8 @@ func TestResolveIdentifier_NameTakesPrecedence(t *testing.T) {
 	testutil.WriteFile(t, filePath2, "")
 
 	v, _ := vault.Init(dir)
-	_ = v.AddFile(filePath1, "alpha")
-	_ = v.AddFile(filePath2, hashPrefix)
+	_ = v.AddFile(filePath1, "alpha", false)
+	_ = v.AddFile(filePath2, hashPrefix, false)
 
 	// Resolving by the hash prefix as a name should find the entry named hashPrefix exactly.
 	name, err := v.ResolveIdentifier(hashPrefix)

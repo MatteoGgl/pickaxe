@@ -25,7 +25,7 @@ func TestReader_RoundTrip(t *testing.T) {
 	}
 	filePath := filepath.Join(dir, "note.md")
 	testutil.WriteFile(t, filePath, "hello world")
-	if err := v.AddFile(filePath, "note"); err != nil {
+	if err := v.AddFile(filePath, "note", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Save(); err != nil {
@@ -73,7 +73,7 @@ func TestReader_ReloadsAfterChange(t *testing.T) {
 	}
 	filePath := filepath.Join(dir, "note.md")
 	testutil.WriteFile(t, filePath, "hello")
-	if err := v.AddFile(filePath, "note"); err != nil {
+	if err := v.AddFile(filePath, "note", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Save(); err != nil {

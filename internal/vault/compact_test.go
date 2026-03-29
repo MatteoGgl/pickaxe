@@ -20,7 +20,7 @@ func writeFile(t *testing.T, path string) {
 }
 
 func TestCompact_Empty(t *testing.T) {
-	entries, err := vault.Compact(nil)
+	entries, err := vault.Compact(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestCompact_Empty(t *testing.T) {
 		t.Fatalf("expected empty, got %v", entries)
 	}
 
-	entries, err = vault.Compact([]string{})
+	entries, err = vault.Compact([]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,12 +37,80 @@ func TestCompact_Empty(t *testing.T) {
 	}
 }
 
+func TestCompact_AllWritable(t *testing.T) {
+	dir := testutil.TempDir(t)
+	f1 := filepath.Join(dir, "a.md")
+	f2 := filepath.Join(dir, "b.md")
+	writeFile(t, f1)
+	writeFile(t, f2)
+
+	writable := map[string]bool{f1: true, f2: true}
+	entries, err := vault.Compact([]string{f1, f2}, writable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 dir entry, got %d: %v", len(entries), entries)
+	}
+	if !entries[0].Writable {
+		t.Error("expected Writable=true for fully writable dir")
+	}
+}
+
+func TestCompact_NoneWritable(t *testing.T) {
+	dir := testutil.TempDir(t)
+	f1 := filepath.Join(dir, "a.md")
+	f2 := filepath.Join(dir, "b.md")
+	writeFile(t, f1)
+	writeFile(t, f2)
+
+	entries, err := vault.Compact([]string{f1, f2}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 dir entry, got %d: %v", len(entries), entries)
+	}
+	if entries[0].Writable {
+		t.Error("expected Writable=false when no writable paths")
+	}
+}
+
+func TestCompact_MixedWritable_PreventsDirCollapse(t *testing.T) {
+	dir := testutil.TempDir(t)
+	f1 := filepath.Join(dir, "a.md")
+	f2 := filepath.Join(dir, "b.md")
+	writeFile(t, f1)
+	writeFile(t, f2)
+
+	// Only f1 is writable — mixed writability prevents dir collapse
+	writable := map[string]bool{f1: true}
+	entries, err := vault.Compact([]string{f1, f2}, writable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 individual file entries (no collapse), got %d: %v", len(entries), entries)
+	}
+	for _, e := range entries {
+		if e.Type != vault.EntryTypeFile {
+			t.Errorf("expected file entry, got %s", e.Type)
+		}
+		if e.Path == f1 && !e.Writable {
+			t.Error("expected f1 to be writable")
+		}
+		if e.Path == f2 && e.Writable {
+			t.Error("expected f2 to be read-only")
+		}
+	}
+}
+
 func TestCompact_SingleFile(t *testing.T) {
 	dir := testutil.TempDir(t)
 	f := filepath.Join(dir, "notes.md")
 	writeFile(t, f)
 
-	entries, err := vault.Compact([]string{f})
+	entries, err := vault.Compact([]string{f}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +136,7 @@ func TestCompact_AllFilesInFlatDir(t *testing.T) {
 	writeFile(t, f1)
 	writeFile(t, f2)
 
-	entries, err := vault.Compact([]string{f1, f2})
+	entries, err := vault.Compact([]string{f1, f2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +165,7 @@ func TestCompact_PartialDirSelection(t *testing.T) {
 	writeFile(t, f3)
 
 	// Only select 2 of 3
-	entries, err := vault.Compact([]string{f1, f2})
+	entries, err := vault.Compact([]string{f1, f2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +187,7 @@ func TestCompact_RecursiveDir(t *testing.T) {
 	writeFile(t, f1)
 	writeFile(t, f2)
 
-	entries, err := vault.Compact([]string{f1, f2})
+	entries, err := vault.Compact([]string{f1, f2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +217,7 @@ func TestCompact_RecursiveDir_Partial(t *testing.T) {
 	writeFile(t, f3)
 
 	// Select top-level file and only one subdir file
-	entries, err := vault.Compact([]string{f1, f2})
+	entries, err := vault.Compact([]string{f1, f2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +269,7 @@ func TestCompact_Mixed(t *testing.T) {
 	writeFile(t, b1)
 	writeFile(t, b2)
 
-	entries, err := vault.Compact([]string{a1, a2, b1}) // b2 not selected
+	entries, err := vault.Compact([]string{a1, a2, b1}, nil) // b2 not selected
 	if err != nil {
 		t.Fatal(err)
 	}

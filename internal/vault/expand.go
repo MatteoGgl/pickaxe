@@ -1,24 +1,25 @@
 package vault
 
-// ExpandEntries returns a map of all concrete .md file paths covered by the given entries.
-// File entries contribute their path directly.
-// Dir entries are expanded (flat or recursive depending on entry.Recursive).
-// The boolean value is always true (the map is used as a set).
-// Unavailable files are skipped.
-func ExpandEntries(entries []Entry) (map[string]bool, error) {
-	result := make(map[string]bool)
+// ExpandEntries returns two maps: paths (all concrete .md file paths) and
+// writable (paths whose parent entry has Writable=true). Unavailable files are skipped.
+func ExpandEntries(entries []Entry) (paths map[string]bool, writable map[string]bool, err error) {
+	paths = make(map[string]bool)
+	writable = make(map[string]bool)
 
 	for _, entry := range entries {
 		files, err := enumerateFiles(entry)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, rf := range files {
 			if !rf.Unavailable {
-				result[rf.Path] = true
+				paths[rf.Path] = true
+				if rf.Writable {
+					writable[rf.Path] = true
+				}
 			}
 		}
 	}
 
-	return result, nil
+	return paths, writable, nil
 }
