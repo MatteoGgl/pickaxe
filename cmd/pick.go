@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"sort"
 
@@ -13,17 +14,17 @@ import (
 )
 
 // PickerFunc is the signature for launching the TUI file picker.
-type PickerFunc func(root string, preSelected map[string]bool) (tui.PickerResult, error)
+type PickerFunc func(root string, preSelected map[string]bool, preWritable map[string]bool) (tui.PickerResult, error)
 
 // PickFromVault runs the interactive pick flow: expand current entries,
 // show picker, compact result, replace vault entries.
 func PickFromVault(v *vault.Vault, vaultRoot string, picker PickerFunc, w io.Writer) error {
-	expanded, err := vault.ExpandEntries(v.Entries())
+	expanded, expandedWritable, err := vault.ExpandEntries(v.Entries())
 	if err != nil {
 		return fmt.Errorf("expand entries: %w", err)
 	}
 
-	result, err := picker(vaultRoot, expanded)
+	result, err := picker(vaultRoot, expanded, expandedWritable)
 	if err != nil {
 		return fmt.Errorf("picker error: %w", err)
 	}
@@ -33,18 +34,24 @@ func PickFromVault(v *vault.Vault, vaultRoot string, picker PickerFunc, w io.Wri
 	}
 
 	var selectedPaths []string
+	writablePaths := make(map[string]bool)
 	for _, sel := range result.Selections {
 		selectedPaths = append(selectedPaths, sel.Path)
+		if sel.Writable {
+			writablePaths[sel.Path] = true
+		}
 	}
 
-	compacted, err := vault.Compact(selectedPaths)
+	compacted, err := vault.Compact(selectedPaths, writablePaths)
 	if err != nil {
 		return fmt.Errorf("compact: %w", err)
 	}
 
 	oldPaths := entryPathSet(v.Entries())
 	newPaths := entryPathSet(compacted)
-	if pathSetsEqual(oldPaths, newPaths) {
+	oldWritable := entryWritableSet(v.Entries())
+	newWritable := entryWritableSet(compacted)
+	if maps.Equal(oldPaths, newPaths) && maps.Equal(oldWritable, newWritable) {
 		fmt.Fprintln(w, "no changes")
 		return nil
 	}
@@ -74,16 +81,14 @@ func entryPathSet(entries []vault.Entry) map[string]bool {
 	return m
 }
 
-func pathSetsEqual(a, b map[string]bool) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k := range a {
-		if !b[k] {
-			return false
+func entryWritableSet(entries []vault.Entry) map[string]bool {
+	m := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if e.Writable {
+			m[e.Path] = true
 		}
 	}
-	return true
+	return m
 }
 
 func setDiff(a, b map[string]bool) map[string]bool {
@@ -108,8 +113,8 @@ func sortedKeys(m map[string]bool) []string {
 var pickCmd = &cobra.Command{
 	Use:     "pick",
 	Aliases: []string{"p"},
-	Short: "Interactively add or remove vault entries",
-	Args:  cobra.NoArgs,
+	Short:   "Interactively add or remove vault entries",
+	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		globalCfgPath, err := config.DefaultGlobalConfigPath()
 		if err != nil {
@@ -127,7 +132,9 @@ var pickCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("no .pickaxe.json found; run 'pickaxe init' first")
 		}
-		return PickFromVault(v, globalCfg.VaultRoot, tui.Run, os.Stdout)
+		return PickFromVault(v, globalCfg.VaultRoot, func(root string, preSelected, preWritable map[string]bool) (tui.PickerResult, error) {
+			return tui.Run(root, preSelected, preWritable)
+		}, os.Stdout)
 	},
 }
 

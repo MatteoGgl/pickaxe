@@ -11,8 +11,8 @@ import (
 var removeCmd = &cobra.Command{
 	Use:     "remove <name|hash>",
 	Aliases: []string{"rm", "r"},
-	Short: "Remove a registered vault entry by name or hash prefix",
-	Args:  cobra.ExactArgs(1),
+	Short:   "Remove a registered vault entry by name or hash prefix",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id := args[0]
 

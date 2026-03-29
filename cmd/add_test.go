@@ -22,7 +22,7 @@ func initVault(t *testing.T) (*vault.Vault, string) {
 }
 
 func fakePicker(result tui.PickerResult, err error) cmd.PickerFunc {
-	return func(root string, preSelected map[string]bool) (tui.PickerResult, error) {
+	return func(root string, preSelected map[string]bool, preWritable map[string]bool) (tui.PickerResult, error) {
 		return result, err
 	}
 }
@@ -35,7 +35,7 @@ func TestAddDirect_AddFile(t *testing.T) {
 	testutil.WriteFile(t, filePath, "hello")
 
 	var buf bytes.Buffer
-	if err := cmd.AddDirect(v, filePath, false, "", false, &buf); err != nil {
+	if err := cmd.AddDirect(v, filePath, false, "", false, false, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	entries := v.Entries()
@@ -50,7 +50,7 @@ func TestAddDirect_AddDir(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(subDir, "x.md"), "x")
 
 	var buf bytes.Buffer
-	if err := cmd.AddDirect(v, subDir, true, "", true, &buf); err != nil {
+	if err := cmd.AddDirect(v, subDir, true, "", true, false, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	entries := v.Entries()
@@ -68,7 +68,7 @@ func TestAddDirect_WithAlias(t *testing.T) {
 	testutil.WriteFile(t, filePath, "hello")
 
 	var buf bytes.Buffer
-	if err := cmd.AddDirect(v, filePath, false, "my-note", false, &buf); err != nil {
+	if err := cmd.AddDirect(v, filePath, false, "my-note", false, false, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if v.Entries()[0].Name != "my-note" {
@@ -80,8 +80,36 @@ func TestAddDirect_NotFound(t *testing.T) {
 	v, _ := initVault(t)
 
 	var buf bytes.Buffer
-	err := cmd.AddDirect(v, "/nonexistent/file.md", false, "", false, &buf)
+	err := cmd.AddDirect(v, "/nonexistent/file.md", false, "", false, false, &buf)
 	if err == nil {
 		t.Fatal("expected error for nonexistent path, got nil")
+	}
+}
+
+func TestAddDirect_Writable(t *testing.T) {
+	v, dir := initVault(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	var buf bytes.Buffer
+	if err := cmd.AddDirect(v, filePath, false, "", false, true, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !v.Entries()[0].Writable {
+		t.Error("expected Writable=true")
+	}
+}
+
+func TestAddDirect_WritableDir(t *testing.T) {
+	v, dir := initVault(t)
+	subDir := filepath.Join(dir, "docs")
+	testutil.WriteFile(t, filepath.Join(subDir, "x.md"), "x")
+
+	var buf bytes.Buffer
+	if err := cmd.AddDirect(v, subDir, true, "", false, true, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !v.Entries()[0].Writable {
+		t.Error("expected Writable=true for dir")
 	}
 }

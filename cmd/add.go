@@ -13,15 +13,16 @@ import (
 
 var addAlias string
 var addRecursive bool
+var addWritable bool
 
 // AddDirect registers a single file or directory.
-func AddDirect(v *vault.Vault, absPath string, isDir bool, alias string, recursive bool, w io.Writer) error {
+func AddDirect(v *vault.Vault, absPath string, isDir bool, alias string, recursive bool, writable bool, w io.Writer) error {
 	if isDir {
-		if err := v.AddDir(absPath, alias, recursive); err != nil {
+		if err := v.AddDir(absPath, alias, recursive, writable); err != nil {
 			return err
 		}
 	} else {
-		if err := v.AddFile(absPath, alias); err != nil {
+		if err := v.AddFile(absPath, alias, writable); err != nil {
 			return err
 		}
 	}
@@ -35,8 +36,8 @@ func AddDirect(v *vault.Vault, absPath string, isDir bool, alias string, recursi
 var addCmd = &cobra.Command{
 	Use:     "add <path>",
 	Aliases: []string{"a"},
-	Short: "Register a vault file or directory",
-	Args:  cobra.ExactArgs(1),
+	Short:   "Register a vault file or directory",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rawPath := args[0]
 
@@ -61,12 +62,13 @@ var addCmd = &cobra.Command{
 		}
 
 		isDir := info.IsDir() || strings.HasSuffix(rawPath, "/")
-		return AddDirect(v, absPath, isDir, addAlias, addRecursive, os.Stdout)
+		return AddDirect(v, absPath, isDir, addAlias, addRecursive, addWritable, os.Stdout)
 	},
 }
 
 func init() {
 	addCmd.Flags().StringVar(&addAlias, "as", "", "Override the short name for this entry")
 	addCmd.Flags().BoolVar(&addRecursive, "recursive", false, "Register directory recursively")
+	addCmd.Flags().BoolVar(&addWritable, "writable", false, "Grant write access to this entry")
 	rootCmd.AddCommand(addCmd)
 }

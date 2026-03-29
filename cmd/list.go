@@ -49,12 +49,17 @@ var listCmd = &cobra.Command{
 			plen := ht.ShortPrefixLen(entry.Name)
 			styledHash := styleBold.Render(shortHash[:plen]) + styleDim.Render(shortHash[plen:])
 
+			perm := styleDim.Render("r-")
+			if entry.Writable {
+				perm = styleOK.Render("rw")
+			}
+
 			if listErr != nil {
 				badge := styleFile.Render("[file]")
 				if entry.Type == vault.EntryTypeDir {
 					badge = styleDir.Render("[dir]")
 				}
-				fmt.Printf("  %s %s %s — %s\n", styledHash, badge, styleBold.Render(entry.Name), styleBad.Render("ERROR: "+listErr.Error()))
+				fmt.Printf("  %s %s %s %s — %s\n", styledHash, badge, perm, styleBold.Render(entry.Name), styleBad.Render("ERROR: "+listErr.Error()))
 				continue
 			}
 			if entry.Type == vault.EntryTypeDir {
@@ -70,7 +75,7 @@ var listCmd = &cobra.Command{
 					meta += styleDim.Render(", recursive")
 				}
 				fileCount := styleDim.Render(fmt.Sprintf("%d files", count))
-				fmt.Printf("  %s %s %s %s — %s\n", styledHash, styleDir.Render("[dir]"), styleBold.Render(entry.Name), meta, fileCount)
+				fmt.Printf("  %s %s %s %s %s — %s\n", styledHash, styleDir.Render("[dir]"), perm, styleBold.Render(entry.Name), meta, fileCount)
 			} else {
 				unavailable := false
 				for _, f := range allFiles {
@@ -84,7 +89,7 @@ var listCmd = &cobra.Command{
 				} else {
 					status = styleOK.Render("✓")
 				}
-				fmt.Printf("  %s %s %s %s %s\n", styledHash, styleFile.Render("[file]"), styleBold.Render(entry.Name), styleDim.Render(entry.Path), status)
+				fmt.Printf("  %s %s %s %s %s %s\n", styledHash, styleFile.Render("[file]"), perm, styleBold.Render(entry.Name), styleDim.Render(entry.Path), status)
 			}
 		}
 		return nil

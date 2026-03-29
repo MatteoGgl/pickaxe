@@ -39,7 +39,7 @@ func TestPickFromVault_RemovesEntry(t *testing.T) {
 	v, dir := initVault(t)
 	f1 := filepath.Join(dir, "a.md")
 	testutil.WriteFile(t, f1, "a")
-	if err := v.AddFile(f1, ""); err != nil {
+	if err := v.AddFile(f1, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Save(); err != nil {
@@ -69,7 +69,7 @@ func TestPickFromVault_MixedAddRemove(t *testing.T) {
 	f2 := filepath.Join(dir, "b.md")
 	testutil.WriteFile(t, f1, "a")
 	testutil.WriteFile(t, f2, "b")
-	if err := v.AddFile(f1, ""); err != nil {
+	if err := v.AddFile(f1, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Save(); err != nil {
@@ -99,7 +99,7 @@ func TestPickFromVault_NoChanges(t *testing.T) {
 	v, dir := initVault(t)
 	f1 := filepath.Join(dir, "a.md")
 	testutil.WriteFile(t, f1, "a")
-	if err := v.AddFile(f1, ""); err != nil {
+	if err := v.AddFile(f1, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Save(); err != nil {
@@ -124,7 +124,7 @@ func TestPickFromVault_Cancelled(t *testing.T) {
 	v, dir := initVault(t)
 	f1 := filepath.Join(dir, "a.md")
 	testutil.WriteFile(t, f1, "a")
-	if err := v.AddFile(f1, ""); err != nil {
+	if err := v.AddFile(f1, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := v.Save(); err != nil {
