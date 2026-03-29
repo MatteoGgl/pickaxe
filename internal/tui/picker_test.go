@@ -89,7 +89,7 @@ func setupDirs(t *testing.T) (root, fileA, fileB string) {
 func TestPicker_SelectionPersistsAcrossNav(t *testing.T) {
 	root, fileA, _ := setupDirs(t)
 
-	m := NewPicker(root, nil)
+	m := NewPicker(root, nil, nil)
 
 	// Root shows: dirA/, dirB/ (sorted alphabetically, dirs first)
 	// cursor=0 → dirA
@@ -137,7 +137,7 @@ func TestPicker_SelectionPersistsAcrossNav(t *testing.T) {
 func TestPicker_CtrlDCollectsFromAllDirs(t *testing.T) {
 	root, fileA, fileB := setupDirs(t)
 
-	m := NewPicker(root, nil)
+	m := NewPicker(root, nil, nil)
 
 	// Navigate into dirA, select fileA
 	m = pressEnter(m) // into dirA
@@ -177,7 +177,7 @@ func TestPicker_CtrlDCollectsFromAllDirs(t *testing.T) {
 // adds all its .md files to m.selected and marks the dir checked.
 func TestPicker_DirToggleSelectsAllFiles(t *testing.T) {
 	root, fileA, _ := setupDirs(t)
-	m := NewPicker(root, nil)
+	m := NewPicker(root, nil, nil)
 
 	// cursor=0 → dirA
 	m = pressSpace(m)
@@ -198,7 +198,7 @@ func TestPicker_DirToggleSelectsAllFiles(t *testing.T) {
 // fully-selected dir removes all its .md files from m.selected.
 func TestPicker_DirToggleDeselectsAllFiles(t *testing.T) {
 	root, fileA, _ := setupDirs(t)
-	m := NewPicker(root, nil)
+	m := NewPicker(root, nil, nil)
 
 	// Select dirA first
 	m = pressSpace(m)
@@ -237,7 +237,7 @@ func TestPicker_DirPartialState(t *testing.T) {
 	}
 
 	// Pre-select only file1
-	m := NewPicker(root, map[string]bool{file1: true})
+	m := NewPicker(root, map[string]bool{file1: true}, nil)
 
 	// At root, cursor=0 → dirA
 	item := m.items[0]
@@ -266,7 +266,7 @@ func TestPicker_PartialDirTogglesToFull(t *testing.T) {
 	}
 
 	// Pre-select only file1 → dirA is partial
-	m := NewPicker(root, map[string]bool{file1: true})
+	m := NewPicker(root, map[string]bool{file1: true}, nil)
 
 	// cursor=0 → dirA (partial); press space → should become fully selected
 	m = pressSpace(m)
@@ -289,7 +289,7 @@ func TestPicker_PartialDirTogglesToFull(t *testing.T) {
 // produces file paths (not dir paths) in the result.
 func TestPicker_CtrlDOnlyEmitsFiles(t *testing.T) {
 	root, fileA, _ := setupDirs(t)
-	m := NewPicker(root, nil)
+	m := NewPicker(root, nil, nil)
 
 	// Select dirA (cursor=0)
 	m = pressSpace(m)
@@ -328,7 +328,7 @@ func TestPicker_CtrlDOnlyEmitsFiles(t *testing.T) {
 func TestPicker_NestedDirToggle(t *testing.T) {
 	root, parentDir, shallowFile, deepFile := setupNestedDir(t)
 	_ = parentDir
-	m := NewPicker(root, nil)
+	m := NewPicker(root, nil, nil)
 
 	// cursor=0 → parent/
 	m = pressSpace(m)
@@ -344,13 +344,230 @@ func TestPicker_NestedDirToggle(t *testing.T) {
 	}
 }
 
+func pressW(m *Model) *Model {
+	return pressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+}
+
+// TestPicker_WritableToggle_File checks that pressing w on a checked file
+// toggles writable on then off, and ctrl+d reflects the final state.
+func TestPicker_WritableToggle_File(t *testing.T) {
+	root, fileA, _ := setupDirs(t)
+	m := NewPicker(root, nil, nil)
+
+	// Navigate into dirA, select fileA
+	m = pressEnter(m) // into dirA
+	m = pressDown(m)  // cursor → fileA.md
+	m = pressSpace(m) // select
+
+	if !m.selected[fileA] {
+		t.Fatal("precondition: fileA should be selected")
+	}
+
+	// w → writable on
+	m = pressW(m)
+	if !m.writable[fileA] {
+		t.Errorf("expected writable[fileA]=true after first w press")
+	}
+
+	// w again → writable off
+	m = pressW(m)
+	if m.writable[fileA] {
+		t.Errorf("expected writable[fileA]=false after second w press")
+	}
+
+	// Turn writable back on and confirm
+	m = pressW(m)
+	m = pressCtrlD(m)
+
+	result := m.Result()
+	if !result.Confirmed {
+		t.Fatal("expected Confirmed=true")
+	}
+	var found *Selection
+	for i, sel := range result.Selections {
+		if sel.Path == fileA {
+			found = &result.Selections[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("fileA not in result: %v", result.Selections)
+	}
+	if !found.Writable {
+		t.Errorf("expected Selection.Writable=true, got false")
+	}
+}
+
+// TestPicker_WritableOnUnchecked_SelectsAndMarksWritable verifies that pressing
+// w on an unchecked file selects it and marks it writable in one action.
+func TestPicker_WritableOnUnchecked_SelectsAndMarksWritable(t *testing.T) {
+	root, fileA, _ := setupDirs(t)
+	m := NewPicker(root, nil, nil)
+
+	// Navigate into dirA — fileA is unchecked
+	m = pressEnter(m) // into dirA
+	m = pressDown(m)  // cursor → fileA.md (unchecked)
+
+	m = pressW(m)
+
+	if !m.selected[fileA] {
+		t.Errorf("expected fileA to be selected after w on unchecked file")
+	}
+	if !m.writable[fileA] {
+		t.Errorf("expected writable[fileA]=true after w on unchecked file")
+	}
+}
+
+// TestPicker_WritableOnUncheckedDir_SelectsAllAndMarksWritable verifies that
+// pressing w on an unchecked dir selects all md files and marks them writable.
+func TestPicker_WritableOnUncheckedDir_SelectsAllAndMarksWritable(t *testing.T) {
+	root := t.TempDir()
+	dirA := filepath.Join(root, "dirA")
+	if err := os.MkdirAll(dirA, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file1 := filepath.Join(dirA, "file1.md")
+	file2 := filepath.Join(dirA, "file2.md")
+	for _, f := range []string{file1, file2} {
+		if err := os.WriteFile(f, []byte("# x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := NewPicker(root, nil, nil)
+
+	// cursor=0 → dirA (unchecked); press w → all files selected + writable
+	m = pressW(m)
+
+	if !m.selected[file1] {
+		t.Errorf("expected file1 selected after w on unchecked dir")
+	}
+	if !m.selected[file2] {
+		t.Errorf("expected file2 selected after w on unchecked dir")
+	}
+	if !m.writable[file1] {
+		t.Errorf("expected writable[file1]=true after w on unchecked dir")
+	}
+	if !m.writable[file2] {
+		t.Errorf("expected writable[file2]=true after w on unchecked dir")
+	}
+	if !m.items[0].checked {
+		t.Errorf("expected dirA item to be checked")
+	}
+}
+
+// TestPicker_WritableToggle_Dir verifies that pressing w on a dir toggles
+// writable for all checked files within it.
+func TestPicker_WritableToggle_Dir(t *testing.T) {
+	root := t.TempDir()
+	dirA := filepath.Join(root, "dirA")
+	if err := os.MkdirAll(dirA, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file1 := filepath.Join(dirA, "file1.md")
+	file2 := filepath.Join(dirA, "file2.md")
+	for _, f := range []string{file1, file2} {
+		if err := os.WriteFile(f, []byte("# x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Pre-select both files
+	m := NewPicker(root, map[string]bool{file1: true, file2: true}, nil)
+
+	// cursor=0 → dirA (checked); press w → all checked files become writable
+	m = pressW(m)
+	if !m.writable[file1] {
+		t.Errorf("expected writable[file1]=true after w on dir")
+	}
+	if !m.writable[file2] {
+		t.Errorf("expected writable[file2]=true after w on dir")
+	}
+
+	// Press w again → all become non-writable
+	m = pressW(m)
+	if m.writable[file1] {
+		t.Errorf("expected writable[file1]=false after second w on dir")
+	}
+	if m.writable[file2] {
+		t.Errorf("expected writable[file2]=false after second w on dir")
+	}
+}
+
+// TestPicker_ParentDirNotToggleable verifies that pressing space on ".." does
+// not toggle its checked state.
+func TestPicker_ParentDirNotToggleable(t *testing.T) {
+	root, _, _ := setupDirs(t)
+	m := NewPicker(root, nil, nil)
+
+	// Navigate into dirA so ".." appears at cursor=0
+	m = pressEnter(m) // into dirA
+
+	visible := m.visibleItems()
+	if len(visible) == 0 || visible[0].name != ".." {
+		t.Fatalf("expected '..' at cursor=0, got %v", visible)
+	}
+	// cursor=0 → ".."
+	before := visible[0].checked
+	m = pressSpace(m)
+	visible = m.visibleItems()
+	if visible[0].checked != before {
+		t.Errorf("'..' checked state changed after space: was %v, now %v", before, visible[0].checked)
+	}
+}
+
+// TestPicker_DeselectClearsWritable verifies that deselecting a file also
+// clears its writable state so re-selecting starts clean.
+func TestPicker_DeselectClearsWritable(t *testing.T) {
+	root, fileA, _ := setupDirs(t)
+	m := NewPicker(root, nil, nil)
+
+	m = pressEnter(m) // into dirA
+	m = pressDown(m)  // cursor → fileA.md
+	m = pressSpace(m) // select
+	m = pressW(m)     // mark writable
+
+	if !m.writable[fileA] {
+		t.Fatal("precondition: writable[fileA] should be true")
+	}
+
+	m = pressSpace(m) // deselect
+	m = pressSpace(m) // re-select
+
+	if m.writable[fileA] {
+		t.Errorf("writable[fileA] should be false after deselect+reselect, got true")
+	}
+}
+
+// TestPicker_DirDeselectClearsWritable verifies that toggling a dir off clears
+// writable state for all its files.
+func TestPicker_DirDeselectClearsWritable(t *testing.T) {
+	root, fileA, _ := setupDirs(t)
+	m := NewPicker(root, nil, nil)
+
+	// cursor=0 → dirA; select all then mark writable
+	m = pressSpace(m) // select all
+	m = pressW(m)     // mark writable
+
+	if !m.writable[fileA] {
+		t.Fatal("precondition: writable[fileA] should be true")
+	}
+
+	m = pressSpace(m) // deselect all (dir toggle off)
+	m = pressSpace(m) // re-select all
+
+	if m.writable[fileA] {
+		t.Errorf("writable[fileA] should be false after dir deselect+reselect, got true")
+	}
+}
+
 // TestPicker_UntogglePreSelectedExcludesFromResult pre-selects a file, then
 // untoggling it via space should remove it from the ctrl+d result.
 func TestPicker_UntogglePreSelectedExcludesFromResult(t *testing.T) {
 	root, fileA, _ := setupDirs(t)
 
 	preSelected := map[string]bool{fileA: true}
-	m := NewPicker(root, preSelected)
+	m := NewPicker(root, preSelected, nil)
 
 	// Navigate into dirA
 	m = pressEnter(m) // into dirA

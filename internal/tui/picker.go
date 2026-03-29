@@ -12,10 +12,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Selection holds a path and whether it's a directory.
+// Selection holds a path, whether it's a directory, and its writable state.
 type Selection struct {
-	Path  string
-	IsDir bool
+	Path     string
+	IsDir    bool
+	Writable bool
 }
 
 // PickerResult is returned when the user confirms or cancels.
@@ -46,6 +47,7 @@ type Model struct {
 	filterMode  bool
 	preSelected map[string]bool
 	selected    map[string]bool
+	writable    map[string]bool
 	done        bool
 	result      PickerResult
 }
@@ -59,6 +61,7 @@ var (
 	selectedStyle = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 	filterStyle   = partialStyle // same yellow
 	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	rwStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 )
 
 // collectMdFiles returns all .md file paths under dir, recursively,
@@ -83,8 +86,8 @@ func collectMdFiles(dir string) []string {
 	return files
 }
 
-// NewPicker creates a new picker model rooted at root. preSelected is the set of already-registered paths.
-func NewPicker(root string, preSelected map[string]bool) *Model {
+// NewPicker creates a new picker model rooted at root.
+func NewPicker(root string, preSelected map[string]bool, preWritable map[string]bool) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "filter..."
 	ti.CharLimit = 60
@@ -93,6 +96,10 @@ func NewPicker(root string, preSelected map[string]bool) *Model {
 	for k, v := range preSelected {
 		selected[k] = v
 	}
+	writable := make(map[string]bool, len(preWritable))
+	for k, v := range preWritable {
+		writable[k] = v
+	}
 
 	m := &Model{
 		root:        root,
@@ -100,6 +107,7 @@ func NewPicker(root string, preSelected map[string]bool) *Model {
 		filter:      ti,
 		preSelected: preSelected,
 		selected:    selected,
+		writable:    writable,
 		height:      24, // sensible default until WindowSizeMsg arrives
 	}
 	m.loadItems()
@@ -246,10 +254,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if idx >= 0 {
 					item := &m.items[idx]
 					if item.isDir {
+						if item.name == ".." {
+							break
+						}
 						if item.checked {
 							// fully selected → deselect all
 							for _, f := range item.mdFiles {
 								delete(m.selected, f)
+								delete(m.writable, f)
 							}
 							item.checked = false
 							item.partial = false
@@ -267,6 +279,63 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.selected[item.path] = true
 						} else {
 							delete(m.selected, item.path)
+							delete(m.writable, item.path)
+						}
+					}
+				}
+			}
+
+		case "w":
+			visible := m.visibleItems()
+			if m.cursor < len(visible) {
+				idx := m.itemIndex(visible[m.cursor])
+				if idx >= 0 {
+					item := &m.items[idx]
+					if item.isDir {
+						if len(item.mdFiles) > 0 {
+							anyChecked := false
+							for _, f := range item.mdFiles {
+								if m.selected[f] {
+									anyChecked = true
+									break
+								}
+							}
+							if !anyChecked {
+								// auto-select all then mark all writable
+								for _, f := range item.mdFiles {
+									m.selected[f] = true
+									m.writable[f] = true
+								}
+								item.checked = true
+								item.partial = false
+							} else {
+								allWritable := true
+								for _, f := range item.mdFiles {
+									if m.selected[f] && !m.writable[f] {
+										allWritable = false
+									}
+								}
+								newWritable := !allWritable
+								for _, f := range item.mdFiles {
+									if m.selected[f] {
+										if newWritable {
+											m.writable[f] = true
+										} else {
+											delete(m.writable, f)
+										}
+									}
+								}
+							}
+						}
+					} else {
+						if !item.checked {
+							item.checked = true
+							m.selected[item.path] = true
+						}
+						if m.writable[item.path] {
+							delete(m.writable, item.path)
+						} else {
+							m.writable[item.path] = true
 						}
 					}
 				}
@@ -297,7 +366,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err != nil || info.IsDir() {
 					continue // only emit files
 				}
-				sels = append(sels, Selection{Path: p, IsDir: false})
+				sels = append(sels, Selection{Path: p, IsDir: false, Writable: m.writable[p]})
 			}
 			m.done = true
 			m.result = PickerResult{Confirmed: true, Selections: sels}
@@ -351,7 +420,7 @@ func (m *Model) View() string {
 
 	var sb strings.Builder
 	sb.WriteString("  Vault: " + m.cwd + "\n")
-	sb.WriteString("  [space] toggle  [enter] open dir  [ctrl+d] confirm  [/] filter  [q] cancel\n\n")
+	sb.WriteString("  [space] toggle  [w] writable  [enter] open dir  [ctrl+d] confirm  [/] filter  [q] cancel\n\n")
 
 	if m.filterMode {
 		sb.WriteString("  Filter: " + filterStyle.Render(m.filter.View()) + "\n\n")
@@ -381,10 +450,43 @@ func (m *Model) View() string {
 		}
 
 		check := "[ ]"
-		if item.checked {
+		if item.name == ".." {
+			check = "   "
+		} else if item.checked {
 			check = checkedStyle.Render("[x]")
 		} else if item.partial {
 			check = partialStyle.Render("[~]")
+		}
+
+		var perm string
+		if item.isDir {
+			checkedCount := 0
+			writableCount := 0
+			for _, f := range item.mdFiles {
+				if m.selected[f] {
+					checkedCount++
+					if m.writable[f] {
+						writableCount++
+					}
+				}
+			}
+			if checkedCount == 0 && !item.partial {
+				perm = "  "
+			} else if writableCount == 0 {
+				perm = dimStyle.Render("r-")
+			} else if writableCount == checkedCount {
+				perm = rwStyle.Render("rw")
+			} else {
+				perm = dimStyle.Render("r~")
+			}
+		} else {
+			if item.checked && m.writable[item.path] {
+				perm = rwStyle.Render("rw")
+			} else if item.checked {
+				perm = dimStyle.Render("r-")
+			} else {
+				perm = "  "
+			}
 		}
 
 		name := item.name
@@ -392,7 +494,7 @@ func (m *Model) View() string {
 			name = dirStyle.Render(name + "/")
 		}
 
-		line := cursor + check + " " + name
+		line := cursor + check + " " + perm + " " + name
 		if absIdx == m.cursor {
 			line = selectedStyle.Render(line)
 		}
@@ -413,8 +515,8 @@ func (m *Model) Result() PickerResult {
 }
 
 // Run starts the picker and returns the result.
-func Run(root string, preSelected map[string]bool) (PickerResult, error) {
-	m := NewPicker(root, preSelected)
+func Run(root string, preSelected map[string]bool, preWritable map[string]bool) (PickerResult, error) {
+	m := NewPicker(root, preSelected, preWritable)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
