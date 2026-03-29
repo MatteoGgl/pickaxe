@@ -2,6 +2,9 @@
 
 Expose Obsidian vault files to Claude Code via MCP.
 
+> [!WARNING]
+> **Back up your vault before use.** `pickaxe` can write to vault files when entries are marked writable. You should be backing up your vault regularly anyway: now is a good time to make sure you have a fresh one.
+
 ## Install
 
 You can download the compiled binaries from the [Releases](https://github.com/MatteoGgl/pickaxe/releases) page or install it directly with Go:
@@ -70,7 +73,7 @@ Add to `.mcp.json` in your project root:
 }
 ```
 
-Changes to `.pickaxe.json` are picked up immediately — no server restart needed.
+Changes to `.pickaxe.json` are picked up immediately. No server restart needed.
 
 ## Commands
 
