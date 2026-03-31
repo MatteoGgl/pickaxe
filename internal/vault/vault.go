@@ -339,6 +339,15 @@ func WriteFile(dir, name, content string) error {
 	if !f.Writable {
 		return fmt.Errorf("%w: %q", ErrReadOnly, name)
 	}
+	if v.shouldStripFrontmatter() && strings.HasSuffix(f.Path, ".md") {
+		existing, err := os.ReadFile(f.Path)
+		if err == nil {
+			fm, _ := frontmatter.Extract(string(existing))
+			if fm != "" {
+				content = fm + content
+			}
+		}
+	}
 	return pathutil.AtomicWrite(f.Path, []byte(content), 0o644)
 }
 

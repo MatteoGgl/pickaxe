@@ -2,6 +2,7 @@ package vault_test
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -317,6 +318,83 @@ func TestWriteFile_ReadOnly(t *testing.T) {
 	err := vault.WriteFile(dir, "note", "updated content")
 	if !errors.Is(err, vault.ErrReadOnly) {
 		t.Errorf("expected ErrReadOnly, got %v", err)
+	}
+}
+
+func TestWriteFile_PreservesFrontmatter(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "---\ntitle: secret\ntags: [a]\n---\n\n# Hello")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	// Write body-only content (as MCP consumer would after reading stripped content)
+	if err := vault.WriteFile(dir, "note", "\n# Updated"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	want := "---\ntitle: secret\ntags: [a]\n---\n\n# Updated"
+	if string(raw) != want {
+		t.Errorf("frontmatter not preserved on disk\n got  %q\n want %q", string(raw), want)
+	}
+}
+
+func TestWriteFile_NoFrontmatter(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "# Original")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	if err := vault.WriteFile(dir, "note", "# Updated"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	if string(raw) != "# Updated" {
+		t.Errorf("expected plain write, got %q", string(raw))
+	}
+}
+
+func TestWriteFile_NonMarkdown(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "data.txt")
+	testutil.WriteFile(t, filePath, "---\nfoo: bar\n---\noriginal")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "data", true)
+	_ = v.Save()
+
+	if err := vault.WriteFile(dir, "data", "new content"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	if string(raw) != "new content" {
+		t.Errorf("non-.md should write as-is, got %q", string(raw))
+	}
+}
+
+func TestWriteFile_StripDisabled(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "---\ntitle: x\n---\n# Hello")
+
+	testutil.WriteFile(t, filepath.Join(dir, ".pickaxe.json"),
+		`{"version":1,"strip_frontmatter":false,"entries":[{"type":"file","path":"`+filePath+`","name":"note","writable":true}]}`)
+
+	if err := vault.WriteFile(dir, "note", "---\ntitle: x\n---\n# Updated"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	if string(raw) != "---\ntitle: x\n---\n# Updated" {
+		t.Errorf("strip disabled: should write as-is, got %q", string(raw))
 	}
 }
 

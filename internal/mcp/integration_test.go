@@ -163,5 +163,54 @@ func TestIntegration_ListVaultFiles_MarksUnavailable(t *testing.T) {
 	}
 }
 
-// Ensure os is used (for potential future use in this test file).
-var _ = os.DevNull
+func TestIntegration_UpdateVaultFile_PreservesFrontmatter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in short mode")
+	}
+
+	bin := buildPickaxe(t)
+	dir := testutil.TempDir(t)
+
+	vaultFile := filepath.Join(dir, "note.md")
+	original := "---\ntitle: secret\ntags: [a, b]\n---\n\n# Hello"
+	testutil.WriteFile(t, vaultFile, original)
+	registry := fmt.Sprintf(`{"version":1,"entries":[{"type":"file","path":%q,"name":"note","writable":true}]}`, vaultFile)
+	testutil.WriteFile(t, filepath.Join(dir, ".pickaxe.json"), registry)
+
+	_, session := connectToServer(t, bin, dir)
+
+	// Read — should get body without frontmatter
+	readResult, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_vault_file",
+		Arguments: map[string]any{"name": "note"},
+	})
+	if err != nil {
+		t.Fatalf("read_vault_file: %v", err)
+	}
+	readText := readResult.Content[0].(*sdkmcp.TextContent).Text
+	if strings.Contains(readText, "title: secret") {
+		t.Fatalf("frontmatter should have been stripped, got: %q", readText)
+	}
+
+	// Update — write new body
+	updateResult, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "update_vault_file",
+		Arguments: map[string]any{"name": "note", "content": "\n# Updated"},
+	})
+	if err != nil {
+		t.Fatalf("update_vault_file: %v", err)
+	}
+	if updateResult.IsError {
+		t.Fatalf("update_vault_file error: %v", updateResult.Content)
+	}
+
+	// Verify raw file on disk
+	raw, err := os.ReadFile(vaultFile)
+	if err != nil {
+		t.Fatalf("read raw file: %v", err)
+	}
+	want := "---\ntitle: secret\ntags: [a, b]\n---\n\n# Updated"
+	if string(raw) != want {
+		t.Errorf("frontmatter not preserved on disk\n got  %q\n want %q", string(raw), want)
+	}
+}
