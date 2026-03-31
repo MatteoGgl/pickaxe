@@ -424,7 +424,6 @@ func TestUpdateVaultFile_WriteInvalidatesRead(t *testing.T) {
 	}
 }
 
-
 func TestFormatLines_FullFile(t *testing.T) {
 	got := internalmcp.FormatLines("alpha\nbeta\ngamma", 0, 0)
 	want := "     1\talpha\n     2\tbeta\n     3\tgamma"
@@ -479,7 +478,6 @@ func TestFormatLines_SingleLine(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
-
 
 func TestReadVaultFile_WithOffset(t *testing.T) {
 	fv := &fakeVault{contents: map[string]string{"note": "line1\nline2\nline3"}}
@@ -552,7 +550,6 @@ func TestReadVaultFile_LineRangeReadEnablesUpdate(t *testing.T) {
 		t.Fatalf("partial read should satisfy ReadTracker: %s", result.Content[0].(*sdkmcp.TextContent).Text)
 	}
 }
-
 
 func TestUpdateVaultFile_StringReplace_Success(t *testing.T) {
 	fv := &fakeVault{contents: map[string]string{"note": "hello world"}}

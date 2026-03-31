@@ -386,7 +386,7 @@ func ReplaceInFile(dir, name, oldStr, newStr string) error {
 	if first == -1 {
 		return ErrNoMatch
 	}
-	if strings.Index(body[first+len(oldStr):], oldStr) != -1 {
+	if strings.Contains(body[first+len(oldStr):], oldStr) {
 		return ErrAmbiguousMatch
 	}
 	newBody := body[:first] + newStr + body[first+len(oldStr):]
