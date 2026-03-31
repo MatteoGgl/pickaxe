@@ -24,7 +24,7 @@ func NewServer(registryPath string) *sdkmcp.Server {
 	sdkmcp.AddTool(s,
 		&sdkmcp.Tool{
 			Name:        "read_vault_file",
-			Description: "Read the full content of a registered vault file by name. Use list_vault_files first to see available names.",
+			Description: "Read the content of a registered vault file by name. Returns numbered lines (cat -n format). Optional: 'offset' (1-based start line, default 1) and 'limit' (number of lines, default all). Use list_vault_files first to see available names.",
 		},
 		MakeReadVaultFileHandler(vr, tracker),
 	)
@@ -32,7 +32,7 @@ func NewServer(registryPath string) *sdkmcp.Server {
 	sdkmcp.AddTool(s,
 		&sdkmcp.Tool{
 			Name:        "update_vault_file",
-			Description: "Write new content to a registered vault file. Only works if the file has been marked writable with 'pickaxe unlock <name>', and requires read_vault_file to be called first. Use list_vault_files to check writable status.",
+			Description: "Update a registered vault file. Requires read_vault_file first. Two modes: (1) full replace with 'content', or (2) targeted edit with 'old_string' and 'new_string' (must match exactly once). Only works on writable files — use list_vault_files to check.",
 		},
 		MakeUpdateVaultFileHandler(vr, tracker),
 	)

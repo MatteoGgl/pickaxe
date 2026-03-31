@@ -10,3 +10,6 @@ func NewReader(dir string) *Reader { return &Reader{dir: dir} }
 func (r *Reader) ListFiles() ([]ResolvedFile, error)   { return ListFiles(r.dir) }
 func (r *Reader) ReadFile(name string) (string, error) { return ReadFile(r.dir, name) }
 func (r *Reader) WriteFile(name, content string) error { return WriteFile(r.dir, name, content) }
+func (r *Reader) ReplaceInFile(name, oldStr, newStr string) error {
+	return ReplaceInFile(r.dir, name, oldStr, newStr)
+}

@@ -49,6 +49,8 @@ var (
 	ErrNotFound       = errors.New("no entry with that name")
 	ErrAmbiguousHash  = errors.New("ambiguous hash prefix")
 	ErrReadOnly       = errors.New("file is read-only")
+	ErrNoMatch        = errors.New("old_string not found in file")
+	ErrAmbiguousMatch = errors.New("old_string matches multiple locations")
 )
 
 // ResolveIdentifier returns the entry name matching id by exact name first,
@@ -325,19 +327,30 @@ func resolveFile(v *Vault, name string) (ResolvedFile, error) {
 	return f, nil
 }
 
-// WriteFile opens the vault at dir, checks that the named file is writable,
-// and overwrites its content atomically.
-func WriteFile(dir, name, content string) error {
+// openWritableFile opens the vault at dir, resolves the named file, and
+// verifies it is writable. Returns the vault (for frontmatter config) and
+// the resolved file.
+func openWritableFile(dir, name string) (*Vault, ResolvedFile, error) {
 	v, err := Open(dir)
 	if err != nil {
-		return err
+		return nil, ResolvedFile{}, err
 	}
 	f, err := resolveFile(v, name)
 	if err != nil {
-		return err
+		return nil, ResolvedFile{}, err
 	}
 	if !f.Writable {
-		return fmt.Errorf("%w: %q", ErrReadOnly, name)
+		return nil, ResolvedFile{}, fmt.Errorf("%w: %q", ErrReadOnly, name)
+	}
+	return v, f, nil
+}
+
+// WriteFile opens the vault at dir, checks that the named file is writable,
+// and overwrites its content atomically.
+func WriteFile(dir, name, content string) error {
+	v, f, err := openWritableFile(dir, name)
+	if err != nil {
+		return err
 	}
 	if v.shouldStripFrontmatter() && strings.HasSuffix(f.Path, ".md") {
 		existing, err := os.ReadFile(f.Path)
@@ -349,6 +362,35 @@ func WriteFile(dir, name, content string) error {
 		}
 	}
 	return pathutil.AtomicWrite(f.Path, []byte(content), 0o644)
+}
+
+// ReplaceInFile opens the vault at dir, checks that the named file is writable,
+// and performs a single string replacement in the file body atomically.
+func ReplaceInFile(dir, name, oldStr, newStr string) error {
+	v, f, err := openWritableFile(dir, name)
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(f.Path)
+	if err != nil {
+		return fmt.Errorf("could not read file %q", name)
+	}
+	content := string(raw)
+	var fm, body string
+	if v.shouldStripFrontmatter() && strings.HasSuffix(f.Path, ".md") {
+		fm, body = frontmatter.Extract(content)
+	} else {
+		body = content
+	}
+	first := strings.Index(body, oldStr)
+	if first == -1 {
+		return ErrNoMatch
+	}
+	if strings.Index(body[first+len(oldStr):], oldStr) != -1 {
+		return ErrAmbiguousMatch
+	}
+	newBody := body[:first] + newStr + body[first+len(oldStr):]
+	return pathutil.AtomicWrite(f.Path, []byte(fm+newBody), 0o644)
 }
 
 // ReadFile opens the vault at dir and returns the content of the named file.

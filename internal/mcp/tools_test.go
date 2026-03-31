@@ -14,12 +14,18 @@ import (
 )
 
 type fakeVault struct {
-	files    []vault.ResolvedFile
-	listErr  error
-	contents map[string]string
-	readErr  error
-	writeErr error
-	written  map[string]string
+	files      []vault.ResolvedFile
+	listErr    error
+	contents   map[string]string
+	readErr    error
+	writeErr   error
+	written    map[string]string
+	replaceErr error
+	replaced   []fakeReplace
+}
+
+type fakeReplace struct {
+	Name, OldStr, NewStr string
 }
 
 func (f *fakeVault) ListFiles() ([]vault.ResolvedFile, error) {
@@ -45,6 +51,14 @@ func (f *fakeVault) WriteFile(name, content string) error {
 		f.written = make(map[string]string)
 	}
 	f.written[name] = content
+	return nil
+}
+
+func (f *fakeVault) ReplaceInFile(name, oldStr, newStr string) error {
+	if f.replaceErr != nil {
+		return f.replaceErr
+	}
+	f.replaced = append(f.replaced, fakeReplace{name, oldStr, newStr})
 	return nil
 }
 
@@ -123,8 +137,10 @@ func TestReadVaultFile_Success(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error result")
 	}
-	if result.Content[0].(*sdkmcp.TextContent).Text != "# ADRs\nDecision 1" {
-		t.Errorf("unexpected content: %q", result.Content[0].(*sdkmcp.TextContent).Text)
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	want := "     1\t# ADRs\n     2\tDecision 1"
+	if text != want {
+		t.Errorf("unexpected content:\n got  %q\n want %q", text, want)
 	}
 }
 
@@ -222,7 +238,7 @@ func TestReadVaultFile_ReadErrorNoPath(t *testing.T) {
 }
 
 func TestReadVaultFile_StripsFrontmatter(t *testing.T) {
-	// vault.ReadFile strips frontmatter before returning; handler passes through as-is
+	// vault.ReadFile strips frontmatter before returning; handler formats with line numbers
 	fv := &fakeVault{contents: map[string]string{"note": "\n# Hello"}}
 	result, _, err := readHandler(fv, internalmcp.NewReadTracker())(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note"})
 	if err != nil {
@@ -405,5 +421,325 @@ func TestUpdateVaultFile_WriteInvalidatesRead(t *testing.T) {
 	}
 	if !second.IsError {
 		t.Fatal("expected IsError=true: write should invalidate read token")
+	}
+}
+
+
+func TestFormatLines_FullFile(t *testing.T) {
+	got := internalmcp.FormatLines("alpha\nbeta\ngamma", 0, 0)
+	want := "     1\talpha\n     2\tbeta\n     3\tgamma"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatLines_WithOffset(t *testing.T) {
+	got := internalmcp.FormatLines("a\nb\nc\nd\ne", 3, 0)
+	want := "     3\tc\n     4\td\n     5\te"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatLines_WithLimit(t *testing.T) {
+	got := internalmcp.FormatLines("a\nb\nc\nd\ne", 0, 2)
+	want := "     1\ta\n     2\tb"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatLines_OffsetAndLimit(t *testing.T) {
+	got := internalmcp.FormatLines("a\nb\nc\nd\ne", 2, 2)
+	want := "     2\tb\n     3\tc"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatLines_OffsetBeyondEnd(t *testing.T) {
+	got := internalmcp.FormatLines("a\nb", 10, 0)
+	if got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestFormatLines_EmptyContent(t *testing.T) {
+	got := internalmcp.FormatLines("", 0, 0)
+	want := "     1\t"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatLines_SingleLine(t *testing.T) {
+	got := internalmcp.FormatLines("hello", 0, 0)
+	want := "     1\thello"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+
+func TestReadVaultFile_WithOffset(t *testing.T) {
+	fv := &fakeVault{contents: map[string]string{"note": "line1\nline2\nline3"}}
+	result, _, err := readHandler(fv, internalmcp.NewReadTracker())(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note", Offset: 2})
+	if err != nil || result.IsError {
+		t.Fatalf("err=%v isError=%v", err, result.IsError)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	want := "     2\tline2\n     3\tline3"
+	if text != want {
+		t.Errorf("got %q, want %q", text, want)
+	}
+}
+
+func TestReadVaultFile_WithLimit(t *testing.T) {
+	fv := &fakeVault{contents: map[string]string{"note": "line1\nline2\nline3"}}
+	result, _, err := readHandler(fv, internalmcp.NewReadTracker())(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note", Limit: 1})
+	if err != nil || result.IsError {
+		t.Fatalf("err=%v isError=%v", err, result.IsError)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	want := "     1\tline1"
+	if text != want {
+		t.Errorf("got %q, want %q", text, want)
+	}
+}
+
+func TestReadVaultFile_OffsetAndLimit(t *testing.T) {
+	fv := &fakeVault{contents: map[string]string{"note": "a\nb\nc\nd\ne"}}
+	result, _, err := readHandler(fv, internalmcp.NewReadTracker())(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note", Offset: 2, Limit: 2})
+	if err != nil || result.IsError {
+		t.Fatalf("err=%v isError=%v", err, result.IsError)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	want := "     2\tb\n     3\tc"
+	if text != want {
+		t.Errorf("got %q, want %q", text, want)
+	}
+}
+
+func TestReadVaultFile_OffsetBeyondEnd(t *testing.T) {
+	fv := &fakeVault{contents: map[string]string{"note": "a\nb"}}
+	tracker := internalmcp.NewReadTracker()
+	result, _, err := readHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note", Offset: 100})
+	if err != nil || result.IsError {
+		t.Fatalf("err=%v isError=%v", err, result.IsError)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if text != "" {
+		t.Errorf("expected empty, got %q", text)
+	}
+	if !tracker.HasRead("note") {
+		t.Error("partial read should still mark file as read")
+	}
+}
+
+func TestReadVaultFile_LineRangeReadEnablesUpdate(t *testing.T) {
+	fv := &fakeVault{contents: map[string]string{"note": "a\nb\nc"}}
+	tracker := internalmcp.NewReadTracker()
+
+	// Partial read
+	readHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note", Offset: 2, Limit: 1})
+
+	// Should still allow update
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{Name: "note", Content: "new"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("partial read should satisfy ReadTracker: %s", result.Content[0].(*sdkmcp.TextContent).Text)
+	}
+}
+
+
+func TestUpdateVaultFile_StringReplace_Success(t *testing.T) {
+	fv := &fakeVault{contents: map[string]string{"note": "hello world"}}
+	tracker := internalmcp.NewReadTracker()
+	readHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note"})
+
+	old, new := "hello", "goodbye"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("err=%v isError=%v", err, result.IsError)
+	}
+	if len(fv.replaced) != 1 || fv.replaced[0].OldStr != "hello" || fv.replaced[0].NewStr != "goodbye" {
+		t.Errorf("unexpected replace calls: %+v", fv.replaced)
+	}
+}
+
+func TestUpdateVaultFile_StringReplace_RequiresRead(t *testing.T) {
+	fv := &fakeVault{}
+	tracker := internalmcp.NewReadTracker()
+	old, new := "a", "b"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true when file has not been read")
+	}
+}
+
+func TestUpdateVaultFile_StringReplace_InvalidatesRead(t *testing.T) {
+	fv := &fakeVault{contents: map[string]string{"note": "x"}}
+	tracker := internalmcp.NewReadTracker()
+	readHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.ReadVaultFileParams{Name: "note"})
+
+	old, new := "x", "y"
+	updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+
+	// Second update without re-reading should fail
+	result, _, _ := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+	if !result.IsError {
+		t.Fatal("expected IsError=true: replace should invalidate read")
+	}
+}
+
+func TestUpdateVaultFile_MutualExclusion(t *testing.T) {
+	fv := &fakeVault{}
+	tracker := internalmcp.NewReadTracker()
+	tracker.MarkRead("note")
+	old := "x"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", Content: "full", OldString: &old,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for mutual exclusion")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "cannot provide both") {
+		t.Errorf("unexpected message: %q", text)
+	}
+}
+
+func TestUpdateVaultFile_NoParams(t *testing.T) {
+	fv := &fakeVault{}
+	tracker := internalmcp.NewReadTracker()
+	tracker.MarkRead("note")
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for no params")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "provide") {
+		t.Errorf("unexpected message: %q", text)
+	}
+}
+
+func TestUpdateVaultFile_OldStringOnly(t *testing.T) {
+	fv := &fakeVault{}
+	tracker := internalmcp.NewReadTracker()
+	tracker.MarkRead("note")
+	old := "x"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for old_string without new_string")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "both") {
+		t.Errorf("unexpected message: %q", text)
+	}
+}
+
+func TestUpdateVaultFile_EmptyOldString(t *testing.T) {
+	fv := &fakeVault{}
+	tracker := internalmcp.NewReadTracker()
+	tracker.MarkRead("note")
+	old, new := "", "y"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for empty old_string")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "empty") {
+		t.Errorf("unexpected message: %q", text)
+	}
+}
+
+func TestUpdateVaultFile_StringReplace_NoMatch(t *testing.T) {
+	fv := &fakeVault{replaceErr: vault.ErrNoMatch}
+	tracker := internalmcp.NewReadTracker()
+	tracker.MarkRead("note")
+	old, new := "missing", "x"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for no match")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "not found") {
+		t.Errorf("unexpected message: %q", text)
+	}
+}
+
+func TestUpdateVaultFile_StringReplace_AmbiguousMatch(t *testing.T) {
+	fv := &fakeVault{replaceErr: vault.ErrAmbiguousMatch}
+	tracker := internalmcp.NewReadTracker()
+	tracker.MarkRead("note")
+	old, new := "dup", "x"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for ambiguous match")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "multiple") {
+		t.Errorf("unexpected message: %q", text)
+	}
+}
+
+func TestUpdateVaultFile_StringReplace_ReadOnly(t *testing.T) {
+	fv := &fakeVault{replaceErr: vault.ErrReadOnly}
+	tracker := internalmcp.NewReadTracker()
+	tracker.MarkRead("note")
+	old, new := "x", "y"
+	result, _, err := updateHandler(fv, tracker)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.UpdateVaultFileParams{
+		Name: "note", OldString: &old, NewString: &new,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for read-only")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "pickaxe unlock") {
+		t.Errorf("expected unlock hint: %q", text)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/matteoggl/pickaxe/internal/vault"
@@ -58,7 +59,9 @@ type ListVaultFilesParams struct{}
 
 // ReadVaultFileParams is the parameter struct for read_vault_file.
 type ReadVaultFileParams struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Offset int    `json:"offset,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
 }
 
 // MakeListVaultFilesHandler returns the handler for the list_vault_files tool.
@@ -101,12 +104,36 @@ func MakeListVaultFilesHandler(vr VaultReader) func(context.Context, *sdkmcp.Cal
 // VaultWriter abstracts vault write access for testability.
 type VaultWriter interface {
 	WriteFile(name string, content string) error
+	ReplaceInFile(name, oldStr, newStr string) error
 }
 
 // UpdateVaultFileParams is the parameter struct for update_vault_file.
 type UpdateVaultFileParams struct {
-	Name    string `json:"name"`
-	Content string `json:"content"`
+	Name      string  `json:"name"`
+	Content   string  `json:"content,omitempty"`
+	OldString *string `json:"old_string,omitempty"`
+	NewString *string `json:"new_string,omitempty"`
+}
+
+// FormatLines formats content with line numbers (cat -n style).
+// offset is 1-based (default 1). limit=0 means all remaining lines.
+func FormatLines(content string, offset, limit int) string {
+	lines := strings.Split(content, "\n")
+	if offset <= 0 {
+		offset = 1
+	}
+	if offset > len(lines) {
+		return ""
+	}
+	remaining := lines[offset-1:]
+	if limit > 0 && limit < len(remaining) {
+		remaining = remaining[:limit]
+	}
+	out := make([]string, len(remaining))
+	for i, line := range remaining {
+		out[i] = fmt.Sprintf("%6d\t%s", offset+i, line)
+	}
+	return strings.Join(out, "\n")
 }
 
 func errResult(msg string) (*sdkmcp.CallToolResult, any, error) {
@@ -133,6 +160,7 @@ func MakeReadVaultFileHandler(vr VaultReader, tracker *ReadTracker) func(context
 		if err != nil {
 			return errResult(err.Error())
 		}
+		content = FormatLines(content, args.Offset, args.Limit)
 		tracker.MarkRead(args.Name)
 		return &sdkmcp.CallToolResult{
 			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: content}},
@@ -147,16 +175,43 @@ func MakeUpdateVaultFileHandler(vw VaultWriter, tracker *ReadTracker) func(conte
 			return errResult("name parameter is required")
 		}
 
+		hasContent := args.Content != ""
+		hasReplace := args.OldString != nil || args.NewString != nil
+
+		if hasContent && hasReplace {
+			return errResult("cannot provide both 'content' and 'old_string'/'new_string'")
+		}
+		if !hasContent && !hasReplace {
+			return errResult("provide 'content' for full replace or 'old_string'+'new_string' for targeted edit")
+		}
+		if hasReplace && (args.OldString == nil || args.NewString == nil) {
+			return errResult("both old_string and new_string are required")
+		}
+		if args.OldString != nil && *args.OldString == "" {
+			return errResult("old_string cannot be empty")
+		}
+
 		if !tracker.HasRead(args.Name) {
 			return errResult("You must read the file before updating it. Use read_vault_file first.")
 		}
 
-		err := vw.WriteFile(args.Name, args.Content)
+		var err error
+		if hasContent {
+			err = vw.WriteFile(args.Name, args.Content)
+		} else {
+			err = vw.ReplaceInFile(args.Name, *args.OldString, *args.NewString)
+		}
 		if errors.Is(err, vault.ErrReadOnly) {
 			return errResult(fmt.Sprintf("This file is read-only. Ask the user to make it writable with 'pickaxe unlock %s'.", args.Name))
 		}
 		if errors.Is(err, vault.ErrNotFound) {
 			return errResult(fmt.Sprintf("no registered file with name %q; use list_vault_files to see available names", args.Name))
+		}
+		if errors.Is(err, vault.ErrNoMatch) {
+			return errResult("old_string not found in file")
+		}
+		if errors.Is(err, vault.ErrAmbiguousMatch) {
+			return errResult("old_string matches multiple locations; use a more specific string")
 		}
 		if err != nil {
 			return errResult(err.Error())

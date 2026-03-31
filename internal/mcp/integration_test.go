@@ -106,6 +106,10 @@ func TestIntegration_ReadVaultFile_Found(t *testing.T) {
 	if !strings.Contains(text, "My Note") {
 		t.Errorf("expected file content, got: %q", text)
 	}
+	// Verify line-numbered format
+	if !strings.Contains(text, "     1\t") {
+		t.Errorf("expected cat -n format, got: %q", text)
+	}
 }
 
 func TestIntegration_ReadVaultFile_Missing(t *testing.T) {
@@ -191,6 +195,10 @@ func TestIntegration_UpdateVaultFile_PreservesFrontmatter(t *testing.T) {
 	if strings.Contains(readText, "title: secret") {
 		t.Fatalf("frontmatter should have been stripped, got: %q", readText)
 	}
+	// Verify line-numbered format
+	if !strings.Contains(readText, "\t") {
+		t.Fatalf("expected cat -n format, got: %q", readText)
+	}
 
 	// Update — write new body
 	updateResult, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
@@ -212,5 +220,157 @@ func TestIntegration_UpdateVaultFile_PreservesFrontmatter(t *testing.T) {
 	want := "---\ntitle: secret\ntags: [a, b]\n---\n\n# Updated"
 	if string(raw) != want {
 		t.Errorf("frontmatter not preserved on disk\n got  %q\n want %q", string(raw), want)
+	}
+}
+
+func TestIntegration_ReadVaultFile_LineNumbers(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in short mode")
+	}
+
+	bin := buildPickaxe(t)
+	dir := testutil.TempDir(t)
+
+	vaultFile := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, vaultFile, "alpha\nbeta\ngamma")
+	registry := fmt.Sprintf(`{"version":1,"entries":[{"type":"file","path":%q,"name":"note"}]}`, vaultFile)
+	testutil.WriteFile(t, filepath.Join(dir, ".pickaxe.json"), registry)
+
+	_, session := connectToServer(t, bin, dir)
+
+	result, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_vault_file",
+		Arguments: map[string]any{"name": "note"},
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("read_vault_file: err=%v isError=%v", err, result.IsError)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	wantLines := "     1\talpha\n     2\tbeta\n     3\tgamma"
+	if text != wantLines {
+		t.Errorf("expected cat -n format:\n got  %q\n want %q", text, wantLines)
+	}
+}
+
+func TestIntegration_ReadVaultFile_OffsetLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in short mode")
+	}
+
+	bin := buildPickaxe(t)
+	dir := testutil.TempDir(t)
+
+	vaultFile := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, vaultFile, "a\nb\nc\nd\ne")
+	registry := fmt.Sprintf(`{"version":1,"entries":[{"type":"file","path":%q,"name":"note"}]}`, vaultFile)
+	testutil.WriteFile(t, filepath.Join(dir, ".pickaxe.json"), registry)
+
+	_, session := connectToServer(t, bin, dir)
+
+	result, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_vault_file",
+		Arguments: map[string]any{"name": "note", "offset": 2, "limit": 2},
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("read_vault_file: err=%v isError=%v", err, result.IsError)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	want := "     2\tb\n     3\tc"
+	if text != want {
+		t.Errorf("offset+limit:\n got  %q\n want %q", text, want)
+	}
+}
+
+func TestIntegration_UpdateVaultFile_StringReplace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in short mode")
+	}
+
+	bin := buildPickaxe(t)
+	dir := testutil.TempDir(t)
+
+	vaultFile := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, vaultFile, "hello world\ngoodbye moon")
+	registry := fmt.Sprintf(`{"version":1,"entries":[{"type":"file","path":%q,"name":"note","writable":true}]}`, vaultFile)
+	testutil.WriteFile(t, filepath.Join(dir, ".pickaxe.json"), registry)
+
+	_, session := connectToServer(t, bin, dir)
+
+	// Read first (required)
+	_, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_vault_file",
+		Arguments: map[string]any{"name": "note"},
+	})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	// String replace
+	result, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name: "update_vault_file",
+		Arguments: map[string]any{
+			"name":       "note",
+			"old_string": "hello world",
+			"new_string": "hi earth",
+		},
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("update error: %s", result.Content[0].(*sdkmcp.TextContent).Text)
+	}
+
+	raw, _ := os.ReadFile(vaultFile)
+	want := "hi earth\ngoodbye moon"
+	if string(raw) != want {
+		t.Errorf("disk content:\n got  %q\n want %q", string(raw), want)
+	}
+}
+
+func TestIntegration_UpdateVaultFile_StringReplace_PreservesFrontmatter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in short mode")
+	}
+
+	bin := buildPickaxe(t)
+	dir := testutil.TempDir(t)
+
+	vaultFile := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, vaultFile, "---\ntitle: keep me\n---\n\n# Hello world")
+	registry := fmt.Sprintf(`{"version":1,"entries":[{"type":"file","path":%q,"name":"note","writable":true}]}`, vaultFile)
+	testutil.WriteFile(t, filepath.Join(dir, ".pickaxe.json"), registry)
+
+	_, session := connectToServer(t, bin, dir)
+
+	// Read
+	_, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_vault_file",
+		Arguments: map[string]any{"name": "note"},
+	})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	// String replace in body
+	result, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name: "update_vault_file",
+		Arguments: map[string]any{
+			"name":       "note",
+			"old_string": "Hello world",
+			"new_string": "Updated title",
+		},
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("update error: %s", result.Content[0].(*sdkmcp.TextContent).Text)
+	}
+
+	raw, _ := os.ReadFile(vaultFile)
+	want := "---\ntitle: keep me\n---\n\n# Updated title"
+	if string(raw) != want {
+		t.Errorf("frontmatter not preserved:\n got  %q\n want %q", string(raw), want)
 	}
 }

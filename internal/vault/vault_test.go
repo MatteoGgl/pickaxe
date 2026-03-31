@@ -769,6 +769,141 @@ func TestResolveIdentifier_NameTakesPrecedence(t *testing.T) {
 	}
 }
 
+// --- ReplaceInFile ---
+
+func TestReplaceInFile_Success(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello world")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	if err := vault.ReplaceInFile(dir, "note", "hello", "goodbye"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	if string(raw) != "goodbye world" {
+		t.Errorf("got %q, want %q", string(raw), "goodbye world")
+	}
+}
+
+func TestReplaceInFile_PreservesFrontmatter(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "---\ntitle: keep\n---\n\n# Hello world")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	if err := vault.ReplaceInFile(dir, "note", "Hello", "Updated"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	want := "---\ntitle: keep\n---\n\n# Updated world"
+	if string(raw) != want {
+		t.Errorf("got %q, want %q", string(raw), want)
+	}
+}
+
+func TestReplaceInFile_NoFrontmatter(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "just text here")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	if err := vault.ReplaceInFile(dir, "note", "text", "content"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	if string(raw) != "just content here" {
+		t.Errorf("got %q", string(raw))
+	}
+}
+
+func TestReplaceInFile_NoMatch(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello world")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	err := vault.ReplaceInFile(dir, "note", "missing", "x")
+	if !errors.Is(err, vault.ErrNoMatch) {
+		t.Errorf("expected ErrNoMatch, got %v", err)
+	}
+}
+
+func TestReplaceInFile_MultipleMatches(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "aaa bbb aaa")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	err := vault.ReplaceInFile(dir, "note", "aaa", "x")
+	if !errors.Is(err, vault.ErrAmbiguousMatch) {
+		t.Errorf("expected ErrAmbiguousMatch, got %v", err)
+	}
+}
+
+func TestReplaceInFile_ReadOnly(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", false)
+	_ = v.Save()
+
+	err := vault.ReplaceInFile(dir, "note", "hello", "bye")
+	if !errors.Is(err, vault.ErrReadOnly) {
+		t.Errorf("expected ErrReadOnly, got %v", err)
+	}
+}
+
+func TestReplaceInFile_NotFound(t *testing.T) {
+	dir := testutil.TempDir(t)
+	v, _ := vault.Init(dir)
+	_ = v.Save()
+
+	err := vault.ReplaceInFile(dir, "nonexistent", "a", "b")
+	if !errors.Is(err, vault.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestReplaceInFile_EmptyNewString(t *testing.T) {
+	dir := testutil.TempDir(t)
+	filePath := filepath.Join(dir, "note.md")
+	testutil.WriteFile(t, filePath, "hello world")
+
+	v, _ := vault.Init(dir)
+	_ = v.AddFile(filePath, "note", true)
+	_ = v.Save()
+
+	if err := vault.ReplaceInFile(dir, "note", " world", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, _ := os.ReadFile(filePath)
+	if string(raw) != "hello" {
+		t.Errorf("got %q, want %q", string(raw), "hello")
+	}
+}
+
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
