@@ -38,8 +38,8 @@ func UnlockEntry(v *vault.Vault, id string, w io.Writer) error {
 var lockCmd = &cobra.Command{
 	Use:     "lock <name|hash>",
 	Aliases: []string{"lk"},
-	Short: "Mark a vault entry as read-only",
-	Args:  cobra.ExactArgs(1),
+	Short:   "Mark a vault entry as read-only",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -59,8 +59,8 @@ var lockCmd = &cobra.Command{
 var unlockCmd = &cobra.Command{
 	Use:     "unlock <name|hash>",
 	Aliases: []string{"ul"},
-	Short: "Mark a vault entry as read-write",
-	Args:  cobra.ExactArgs(1),
+	Short:   "Mark a vault entry as read-write",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
