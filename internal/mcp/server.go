@@ -31,6 +31,14 @@ func NewServer(registryPath string) *sdkmcp.Server {
 
 	sdkmcp.AddTool(s,
 		&sdkmcp.Tool{
+			Name:        "search_vault_files",
+			Description: "Search for a string across all registered vault files. Returns matching lines with file name and line number (file:line:content). Case-insensitive. Optional: 'name' to restrict search to a single file.",
+		},
+		MakeSearchVaultFilesHandler(vr),
+	)
+
+	sdkmcp.AddTool(s,
+		&sdkmcp.Tool{
 			Name:        "update_vault_file",
 			Description: "Update a registered vault file. Requires read_vault_file first. Two modes: (1) full replace with 'content', or (2) targeted edit with 'old_string' and 'new_string' (must match exactly once). Only works on writable files — use list_vault_files to check.",
 		},
