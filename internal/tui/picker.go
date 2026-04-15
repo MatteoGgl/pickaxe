@@ -182,7 +182,7 @@ func (m *Model) visibleItems() []fileItem {
 	}
 	var filtered []fileItem
 	for _, item := range m.items {
-		if strings.Contains(strings.ToLower(item.name), strings.ToLower(query)) {
+		if item.name == ".." || strings.Contains(strings.ToLower(item.name), strings.ToLower(query)) {
 			filtered = append(filtered, item)
 		}
 	}
