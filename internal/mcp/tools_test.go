@@ -721,6 +721,142 @@ func TestUpdateVaultFile_StringReplace_AmbiguousMatch(t *testing.T) {
 	}
 }
 
+func searchHandler(fv *fakeVault) func(context.Context, *sdkmcp.CallToolRequest, internalmcp.SearchVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
+	return internalmcp.MakeSearchVaultFilesHandler(fv)
+}
+
+func TestSearchVaultFiles_BasicMatch(t *testing.T) {
+	fv := &fakeVault{
+		files:    []vault.ResolvedFile{{Name: "note"}},
+		contents: map[string]string{"note": "alpha\nbeta\ngamma\nbeta again"},
+	}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: "beta"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result: %s", result.Content[0].(*sdkmcp.TextContent).Text)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "note:2:beta") {
+		t.Errorf("expected match at line 2, got:\n%s", text)
+	}
+	if !strings.Contains(text, "note:4:beta again") {
+		t.Errorf("expected match at line 4, got:\n%s", text)
+	}
+}
+
+func TestSearchVaultFiles_CaseInsensitive(t *testing.T) {
+	fv := &fakeVault{
+		files:    []vault.ResolvedFile{{Name: "note"}},
+		contents: map[string]string{"note": "Hello World\nhello world\nHELLO"},
+	}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: "hello"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	// All three lines should match
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) != 3 {
+		t.Errorf("expected 3 matches, got %d:\n%s", len(lines), text)
+	}
+}
+
+func TestSearchVaultFiles_FilterByName(t *testing.T) {
+	fv := &fakeVault{
+		files: []vault.ResolvedFile{{Name: "a"}, {Name: "b"}},
+		contents: map[string]string{
+			"a": "target line\nother",
+			"b": "target line\nstuff",
+		},
+	}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: "target", Name: "a"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "a:1:") {
+		t.Errorf("expected match in file a, got:\n%s", text)
+	}
+	if strings.Contains(text, "b:") {
+		t.Errorf("should not contain matches from file b, got:\n%s", text)
+	}
+}
+
+func TestSearchVaultFiles_MultipleFiles(t *testing.T) {
+	fv := &fakeVault{
+		files: []vault.ResolvedFile{{Name: "x"}, {Name: "y"}},
+		contents: map[string]string{
+			"x": "foo\nbar",
+			"y": "baz\nfoo",
+		},
+	}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: "foo"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "x:1:foo") || !strings.Contains(text, "y:2:foo") {
+		t.Errorf("expected matches from both files, got:\n%s", text)
+	}
+}
+
+func TestSearchVaultFiles_NoMatches(t *testing.T) {
+	fv := &fakeVault{
+		files:    []vault.ResolvedFile{{Name: "note"}},
+		contents: map[string]string{"note": "alpha\nbeta"},
+	}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: "zzz"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("no matches should not be an error")
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if !strings.Contains(text, "no matches") {
+		t.Errorf("expected 'no matches' message, got: %q", text)
+	}
+}
+
+func TestSearchVaultFiles_EmptyQuery(t *testing.T) {
+	fv := &fakeVault{}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: ""})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true for empty query")
+	}
+}
+
+func TestSearchVaultFiles_SkipsUnavailable(t *testing.T) {
+	fv := &fakeVault{
+		files:    []vault.ResolvedFile{{Name: "ok"}, {Name: "gone", Unavailable: true}},
+		contents: map[string]string{"ok": "match here"},
+	}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: "match"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := result.Content[0].(*sdkmcp.TextContent).Text
+	if strings.Contains(text, "gone") {
+		t.Errorf("should skip unavailable files, got:\n%s", text)
+	}
+}
+
+func TestSearchVaultFiles_NoRegistry(t *testing.T) {
+	fv := &fakeVault{listErr: vault.ErrNotInitialized}
+	result, _, err := searchHandler(fv)(context.Background(), &sdkmcp.CallToolRequest{}, internalmcp.SearchVaultFilesParams{Query: "x"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true for no registry")
+	}
+}
+
 func TestUpdateVaultFile_StringReplace_ReadOnly(t *testing.T) {
 	fv := &fakeVault{replaceErr: vault.ErrReadOnly}
 	tracker := internalmcp.NewReadTracker()

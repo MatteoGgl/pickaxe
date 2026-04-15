@@ -168,6 +168,70 @@ func MakeReadVaultFileHandler(vr VaultReader, tracker *ReadTracker) func(context
 	}
 }
 
+// SearchVaultFilesParams is the parameter struct for search_vault_files.
+type SearchVaultFilesParams struct {
+	Query string `json:"query"`
+	Name  string `json:"name,omitempty"`
+}
+
+// MakeSearchVaultFilesHandler returns the handler for the search_vault_files tool.
+func MakeSearchVaultFilesHandler(vr VaultReader) func(context.Context, *sdkmcp.CallToolRequest, SearchVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *sdkmcp.CallToolRequest, args SearchVaultFilesParams) (*sdkmcp.CallToolResult, any, error) {
+		if args.Query == "" {
+			return errResult("query parameter is required")
+		}
+
+		files, err := vr.ListFiles()
+		if errors.Is(err, vault.ErrNotInitialized) {
+			return errResult("no .pickaxe.json found in this project")
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("open vault: %w", err)
+		}
+
+		queryLower := strings.ToLower(args.Query)
+
+		type searchTarget struct {
+			name string
+		}
+		var targets []searchTarget
+		if args.Name != "" {
+			targets = []searchTarget{{name: args.Name}}
+		} else {
+			for _, f := range files {
+				if !f.Unavailable {
+					targets = append(targets, searchTarget{name: f.Name})
+				}
+			}
+		}
+
+		var matches []string
+		for _, t := range targets {
+			content, err := vr.ReadFile(t.name)
+			if errors.Is(err, vault.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return errResult(fmt.Sprintf("read %s: %s", t.name, err))
+			}
+			for i, line := range strings.Split(content, "\n") {
+				if strings.Contains(strings.ToLower(line), queryLower) {
+					matches = append(matches, fmt.Sprintf("%s:%d:%s", t.name, i+1, line))
+				}
+			}
+		}
+
+		if len(matches) == 0 {
+			return &sdkmcp.CallToolResult{
+				Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "no matches found"}},
+			}, nil, nil
+		}
+		return &sdkmcp.CallToolResult{
+			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: strings.Join(matches, "\n")}},
+		}, nil, nil
+	}
+}
+
 // MakeUpdateVaultFileHandler returns the handler for the update_vault_file tool.
 func MakeUpdateVaultFileHandler(vw VaultWriter, tracker *ReadTracker) func(context.Context, *sdkmcp.CallToolRequest, UpdateVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest, args UpdateVaultFileParams) (*sdkmcp.CallToolResult, any, error) {
